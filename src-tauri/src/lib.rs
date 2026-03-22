@@ -7,35 +7,49 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            // Project
             commands::project::open_project,
             commands::project::list_projects,
             commands::project::add_project,
             commands::project::remove_project,
-            commands::spec::list_active_changes,
-            commands::spec::create_change,
-            commands::spec::read_change_file,
-            commands::spec::write_change_file,
-            commands::spec::delete_change,
-            commands::spec::archive_change,
-            commands::spec::list_domains,
-            commands::spec::list_archived_changes,
-            commands::spec::read_archive_file,
+            // Harness definition
+            commands::harness::read_project_harness,
+            commands::harness::write_project_harness,
+            commands::harness::list_harness_templates,
+            commands::harness::read_harness_template,
+            commands::harness::write_harness_template,
+            commands::harness::delete_harness_template,
+            // Runs
+            commands::harness::list_active_runs,
+            commands::harness::create_run,
+            commands::harness::read_run_file,
+            commands::harness::write_run_file,
+            commands::harness::delete_run,
+            commands::harness::archive_run,
+            commands::harness::list_archived_runs,
+            commands::harness::read_archive_file,
+            // Domains
+            commands::harness::list_domains,
+            commands::harness::read_domain_meta,
+            commands::harness::write_domain_meta,
+            commands::harness::read_domain_file,
+            commands::harness::write_domain_file,
+            commands::harness::delete_domain,
+            commands::harness::read_domain_slots,
+            commands::harness::write_domain_slots,
+            // File
             commands::file::read_text_file,
             commands::file::write_text_file,
             commands::file::scan_directory,
+            // Agents
             commands::agents::get_default_agent_prompt,
             commands::agents::scan_agents,
             commands::agents::write_agent_file,
             commands::agents::delete_agent,
-            commands::skills::scan_skills,
-            commands::skills::write_skill_file,
-            commands::skills::delete_skill,
-            commands::pipeline::read_project_pipeline,
-            commands::pipeline::write_project_pipeline,
-            commands::pipeline::list_pipeline_templates,
-            commands::pipeline::read_pipeline_template,
-            commands::pipeline::write_pipeline_template,
-            commands::pipeline::delete_pipeline_template,
+            // Extensions
+            commands::extensions::scan_extensions,
+            commands::extensions::write_extension_file,
+            commands::extensions::delete_extension,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
