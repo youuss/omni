@@ -160,26 +160,30 @@ export class HarnessExecutor {
       runId: this.context.runId,
     };
 
-    let prompt = agentDef.promptTemplate
+    const prompt = agentDef.promptTemplate
       ? interpolateTemplate(agentDef.promptTemplate, vars)
       : `Execute ${agentDef.name} task`;
 
-    if (harnessNode.constraints?.promptExtra) {
-      prompt += `\n\n---\nAdditional instructions:\n${harnessNode.constraints.promptExtra}`;
-    }
-
+    // Build overrides from node constraints
+    const nodeOverrides: Record<string, { maxTurns?: number; allowedTools?: string[]; promptExtra?: string }> = {};
     const maxTurns = harnessNode.constraints?.maxTurns ?? agentDef.maxTurns;
     const allowedTools = harnessNode.constraints?.allowedTools ?? agentDef.allowedTools;
+
+    nodeOverrides[harnessNode.agentId] = {
+      ...(maxTurns && { maxTurns }),
+      ...(allowedTools?.length && { allowedTools }),
+      ...(harnessNode.constraints?.promptExtra && { promptExtra: harnessNode.constraints.promptExtra }),
+    };
+
     const state = this.nodeStates.get(nodeId)!;
 
     return new Promise<void>((resolve, reject) => {
       runAgent({
-        agentName: harnessNode.agentId,
+        projectPath: this.context.projectPath,
+        agentNames: [harnessNode.agentId],
         prompt,
-        cwd: this.context.projectPath,
         runId: this.context.runId,
-        maxTurnsOverride: maxTurns,
-        allowedToolsOverride: allowedTools,
+        overrides: nodeOverrides,
         onEvent: (event) => this.callbacks.onEvent(nodeId, event),
         onStatus: (text) => this.callbacks.onStatus(nodeId, text),
         onError: (text) => this.callbacks.onError(nodeId, text),
