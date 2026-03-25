@@ -1,226 +1,283 @@
 # Omni Fabric
 
-> AI-powered spec-driven development platform — 基于规格驱动的 AI 开发平台
+> AI-powered spec-driven development platform
 
-Omni Fabric 是一个桌面端开发工具，通过可视化编排多个 AI Agent 的工作流来驱动软件开发。开发者定义需求规格，平台自动编排 Planner、Implementer、Verifier 等 Agent 完成从规划到实现到验证的完整流程。
+Omni Fabric is a desktop application that orchestrates multiple Claude AI agents through a visual harness editor. Define requirements, compose agent workflows on a drag-and-drop canvas, and execute them — from planning to implementation to verification — all powered by the Claude Agent SDK.
 
-## 技术栈
+## Tech Stack
 
-| 层级 | 技术 |
-|------|------|
-| 桌面框架 | Tauri v2 (Rust) |
-| 前端 | React 19 + TypeScript |
-| 状态管理 | Zustand |
-| 路由 | React Router DOM v7 |
-| 样式 | Tailwind CSS v4 |
-| UI 组件 | base-ui + shadcn/ui + Lucide Icons |
-| 流程编辑 | ReactFlow (@xyflow/react) |
+| Layer | Technology |
+|-------|------------|
+| Desktop Framework | Tauri v2 (Rust) |
+| Frontend | React 19 + TypeScript |
+| State Management | Zustand |
+| Routing | React Router DOM v7 |
+| Styling | Tailwind CSS v4 |
+| UI Components | base-ui + shadcn/ui + Lucide Icons |
+| Graph Editor | ReactFlow (@xyflow/react) |
 | Markdown | react-markdown + remark-gfm + react-syntax-highlighter |
-| 序列化 | serde / serde_json |
-| AI 引擎 | Claude CLI (子进程调用) |
+| AI Engine | @anthropic-ai/claude-agent-sdk (Node.js sidecar) |
 
-## 核心概念
+## Core Concepts
 
-### 变更 (Change)
+### Agent
 
-变更是开发任务的基本单元。每个变更包含需求文档、开发计划、验证报告等结构化文件，存储在 `.specs/active/{changeName}/` 目录下。完成后可归档到 `.specs/archive/`。
+An Agent is an AI role that performs a specific development task. Each agent has a system prompt (`.claude/agents/{Name}.md`) and a config (`.harness/agents/{Name}.json`) defining allowed tools and max turns.
 
-### Agent 池
+Built-in agents:
 
-Agent 是执行具体任务的 AI 角色。平台提供四个内置 Agent：
+| Agent | Role | Tools | Max Turns |
+|-------|------|-------|-----------|
+| Planner | Analyze requirements, produce dev plan | Read, Glob, Grep, Write | 20 |
+| Implementer | Execute code changes per plan | Read, Edit, Write, Bash, Glob, Grep | 50 |
+| Verifier | Verify implementation correctness | Read, Glob, Grep | 15 |
+| Analyzer | Analyze bugs, produce fix plan | Read, Glob, Grep, Write | 20 |
 
-| Agent | 类别 | 输入 | 输出 | 职责 |
-|-------|------|------|------|------|
-| Planner | planner | requirements.md | dev-plan.md | 分析需求，制定开发计划 |
-| Implementer | implementer | dev-plan.md | 代码 | 按计划实现代码 |
-| Verifier | verifier | dev-plan.md | verification-report.md | 验证实现是否符合计划 |
-| Analyzer | custom | requirements.md | fix-plan.md | 分析 Bug，制定修复方案 |
+Custom agents can be created with any prompt, tools, and turn limit.
 
-支持创建自定义 Agent，配置输入/输出端口 (Port)、提示词模板、工具权限、最大轮次等。
+### Harness
 
-### Pipeline (流程编排)
+A Harness is a directed acyclic graph (DAG) of agent nodes. Nodes represent agents; edges represent execution dependencies. The harness editor is a visual ReactFlow canvas where you drag agents from a palette, connect them, and configure per-node overrides (maxTurns, allowedTools, promptExtra).
 
-Pipeline 定义了 Agent 的执行顺序和数据流。通过 ReactFlow 可视化编辑器，将 Agent 拖入画布、连线组成工作流。支持：
+Execution follows topological order — each node runs only after its predecessors complete. If a node fails, downstream dependents are skipped.
 
-- **拓扑排序执行**：自动计算依赖关系，按正确顺序执行
-- **端口连接**：Agent 间通过端口传递文件和文本数据
-- **模板变量**：`{{changeName}}` 等变量在运行时自动替换
-- **节点配置覆盖**：每个节点可单独覆盖 `maxTurns`、`allowedTools`、`promptExtra`
-- **模板保存**：将编排方案保存为模板，复用到不同变更
+Built-in templates:
+- **Plan-Implement-Verify**: Planner -> Implementer -> Verifier
+- **Analyze-Fix-Verify**: Analyzer -> Implementer -> Verifier
 
-内置模板：
-- **SDD (Spec-Driven Development)**：Planner → Implementer → Verifier
-- **BugFix**：Analyzer → Implementer → Verifier
+### Run
 
-### Skill (技能)
+A Run is a single execution of a harness. Each run gets a directory under `.harness/runs/{runId}/` with input files (requirements) and output files (dev plan, verification report, etc.). Completed runs can be archived.
 
-Skill 是注入给 Agent 的自定义 MCP 工具，存储在 `.claude/skills/` 下，可按需启用/禁用。
+### Extension
 
-## 架构
+Extensions are injectable prompt modules stored in `.harness/extensions/`. Each extension has a `prompt.md` that gets appended to agent prompts when enabled. Use them for project-specific context, coding standards, or domain knowledge.
 
-### 前端结构
+### Domain
+
+Domains are reusable knowledge modules in `.harness/domains/`. Each domain has metadata (name, description, tags) and slots (context files, examples, references) that provide structured context to agents.
+
+## Architecture
+
+### System Overview
+
+```
++-------------------+    stdin (JSON)    +--------------------+
+|    Tauri App       | ----------------> |   sdk-runner.mjs   |
+|    (React + Rust)  | <---------------- |   (Node.js)        |
+|                    |   stdout (JSONL)  |                    |
+|  RunRequest        |                   |  1. Read .md/.json |
+|  -> stdin          |   stderr (logs)   |  2. Build Options  |
+|                    | <---------------- |  3. SDK query()    |
+|  SDKMessage        |                   |  4. Stream output  |
+|  <- stdout         |                   |                    |
++-------------------+                   +--------------------+
+```
+
+The app uses a **fat sidecar** pattern. The frontend sends a lightweight `RunRequest` (project path, agent names, prompt, overrides) to a Node.js sidecar via stdin. The sidecar reads agent definition files, assembles SDK options, calls the Claude Agent SDK `query()`, and streams results back as JSONL.
+
+### Frontend Structure
 
 ```
 src/
-├── App.tsx                    # 路由配置
+├── App.tsx                       # Router
 ├── components/
-│   ├── Layout.tsx             # 全局布局：左侧导航 + 顶栏 + 内容区
-│   ├── MarkdownRenderer.tsx   # Markdown 渲染
-│   ├── StatusBadge.tsx        # 状态标签
-│   └── ui/                    # shadcn/ui 基础组件
+│   ├── Layout.tsx                # Global layout: sidebar nav + content
+│   ├── MarkdownRenderer.tsx      # Markdown rendering
+│   └── ui/                       # shadcn/ui components
 ├── pages/
-│   ├── Projects/              # 项目管理页
-│   ├── Workspace/             # 工作台 (核心页面)
-│   │   ├── index.tsx          # 工作台主组件
-│   │   ├── WorkspaceHeader.tsx
-│   │   ├── ContentTabs.tsx    # 变更文件标签编辑器
-│   │   ├── PipelineBoard.tsx  # 流程状态条
-│   │   ├── PipelineCanvas.tsx # ReactFlow 可视化编排
-│   │   ├── AgentNode.tsx      # 编排节点组件
-│   │   ├── OutputStream.tsx   # 终端输出面板
-│   │   ├── ChangeList.tsx     # 变更列表
-│   │   ├── CodebaseTree.tsx   # 代码目录树
-│   │   ├── SpecPanel.tsx      # 规格面板
-│   │   ├── ArchivePanel.tsx   # 归档面板
-│   │   ├── WorkspaceDrawer.tsx # 右侧抽屉面板
-│   │   ├── WorkspaceDialogs.tsx
-│   │   ├── useChangeFiles.ts  # 变更文件管理 Hook
-│   │   ├── useAgentRunner.ts  # Agent 运行 Hook
-│   │   └── usePipelineRunner.ts # Pipeline 运行 Hook
-│   ├── Agents/                # Agent 管理页
-│   ├── Skills/                # Skill 管理页
-│   └── Settings/              # 设置页
+│   ├── Projects/                 # Project list, create workspace
+│   ├── Workspace/                # Core page: harness editor + execution
+│   │   ├── index.tsx             # Main workspace layout
+│   │   ├── HarnessCanvas.tsx     # ReactFlow graph editor
+│   │   ├── AgentNode.tsx         # Custom node component
+│   │   ├── AgentPalette.tsx      # Draggable agent list
+│   │   ├── CanvasToolbar.tsx     # Canvas actions
+│   │   ├── NodeDetailPanel.tsx   # Selected node detail panel
+│   │   ├── ContentTabs.tsx       # File editor tabs (requirements, outputs)
+│   │   ├── OutputStream.tsx      # Terminal output
+│   │   ├── WorkspaceDrawer.tsx   # Right sidebar (runs, agents, settings...)
+│   │   ├── DomainPanel.tsx       # Domain knowledge management
+│   │   ├── RunList.tsx           # Run list
+│   │   ├── ArchivePanel.tsx      # Archived runs
+│   │   ├── useHarnessRunner.ts   # Execution orchestration hook
+│   │   └── useRunFiles.ts        # Run file management hook
+│   ├── Agents/                   # Agent CRUD page
+│   ├── Extensions/               # Extension management page
+│   └── Settings/                 # Agent config + environment checks
 ├── services/
-│   ├── agent-service.ts       # Agent 扫描、配置、元数据
-│   ├── pipeline-service.ts    # Pipeline 加载/保存/模板
-│   ├── pipeline-executor.ts   # Pipeline 执行引擎
-│   ├── spec.ts                # 变更/归档/域管理
-│   ├── project.ts             # 项目管理
-│   ├── skill-service.ts       # Skill 扫描/配置
-│   ├── workflow.ts            # 工作流阶段管理
+│   ├── harness-executor.ts       # Execution engine (topo sort, node runner)
+│   ├── harness-service.ts        # Harness definition I/O
+│   ├── harness-template-service.ts # Template management
+│   ├── agent-service.ts          # Agent scanning & CRUD
+│   ├── extension-service.ts      # Extension management
+│   ├── domain-service.ts         # Domain knowledge modules
+│   ├── run-service.ts            # Run lifecycle
+│   ├── project.ts                # Project management
 │   └── claude/
-│       ├── claude-runner.ts   # Claude CLI 子进程管理
-│       ├── agent-config-service.ts
-│       ├── agent-configs.ts   # 内置 Agent 配置
-│       ├── session-store.ts   # 会话持久化
-│       └── stream-parser.ts   # 输出流解析
+│       ├── claude-runner.ts      # Spawn sidecar, send RunRequest, parse output
+│       ├── agent-config-service.ts # Agent config (tools, maxTurns)
+│       ├── stream-parser.ts      # JSONL -> SDKMessage parser
+│       └── session-store.ts      # Session persistence for resume
 ├── stores/
-│   ├── projectStore.ts        # 项目状态
-│   ├── workflowStore.ts       # 工作流状态
-│   ├── pipelineStore.ts       # Pipeline 状态
-│   └── outputStore.ts         # 终端输出
+│   ├── harnessStore.ts           # Harness graph, templates, node runtime state
+│   ├── runStore.ts               # Current run state
+│   ├── projectStore.ts           # Project list + current project
+│   └── outputStore.ts            # Terminal output + streaming state
 └── types/
-    ├── index.ts               # 通用类型
-    ├── pipeline.ts            # Pipeline/Agent/Port 类型
-    ├── project.ts             # 项目类型
-    └── workflow.ts            # 工作流/变更/归档类型
+    ├── claude.ts                 # SDK message types, RunRequest protocol
+    ├── harness.ts                # Harness, Agent, Node, Connection types
+    ├── run.ts                    # Run state types
+    ├── extension.ts              # Extension types
+    ├── project.ts                # Project types
+    └── index.ts                  # Re-exports
 ```
 
-### 后端结构 (Tauri/Rust)
+### Backend Structure (Tauri/Rust)
 
 ```
 src-tauri/
 ├── src/
-│   ├── main.rs                # 入口
-│   ├── lib.rs                 # Tauri 命令注册
+│   ├── lib.rs                    # Plugin & command registration
 │   └── commands/
-│       ├── mod.rs
-│       ├── project.rs         # 项目 CRUD
-│       ├── spec.rs            # 变更/归档管理
-│       ├── file.rs            # 文件读写/目录扫描
-│       ├── agents.rs          # Agent 扫描/读写
-│       ├── skills.rs          # Skill 扫描/读写
-│       └── pipeline.rs        # Pipeline 读写/模板管理
-├── resources/agents/          # 内置 Agent Prompt
+│       ├── mod.rs                # Command module exports
+│       ├── project.rs            # Project list/open/add/remove
+│       ├── harness.rs            # Harness CRUD, runs, archive, domains
+│       ├── agents.rs             # Agent scanning, default prompts
+│       ├── extensions.rs         # Extension scanning
+│       └── file.rs               # Generic file read/write
+├── resources/agents/             # Built-in agent prompts
 │   ├── Planner.md
 │   ├── Implementer.md
 │   ├── Verifier.md
 │   └── Analyzer.md
+├── capabilities/default.json     # Tauri permissions (shell, dialog)
 └── Cargo.toml
 ```
 
-### 项目目录约定
+### SDK Runner Sidecar
 
-Omni Fabric 在项目中使用以下目录结构存储配置和数据：
+```
+scripts/
+└── sdk-runner.mjs                # Node.js sidecar for Claude Agent SDK
+```
+
+The sidecar receives a `RunRequest` JSON via stdin, then:
+
+1. Reads agent prompts from `.claude/agents/{name}.md`
+2. Reads agent configs from `.harness/agents/{name}.json`
+3. Reads enabled extensions and appends to agent prompts
+4. Assembles SDK `Options` with agents, hooks, mcpServers, etc.
+5. Calls `query()` from `@anthropic-ai/claude-agent-sdk`
+6. Streams each `SDKMessage` as a JSON line to stdout
+7. Listens for control commands (`{"cmd":"abort"}`) on subsequent stdin lines
+
+### Project Directory Convention
 
 ```
 {project}/
 ├── .claude/
-│   ├── agents/                # Agent 定义文件 (*.md)
-│   └── skills/                # Skill 定义
-│       └── {SkillId}/SKILL.md
-├── .specs/
-│   ├── active/                # 活跃变更
-│   │   └── {changeName}/
-│   │       ├── requirements.md
-│   │       ├── dev-plan.md
-│   │       ├── verification-report.md
-│   │       ├── meta.json      # Pipeline 绑定
-│   │       └── images/
-│   ├── archive/               # 归档变更
-│   │   └── YYYY-MM-DD-{name}/
-│   └── domains/               # 领域定义
-└── .omni/
-    ├── agents-config.json     # Agent 启用配置
-    ├── skills-config.json     # Skill 启用配置
-    ├── pipeline.json          # 当前 Pipeline
-    └── pipelines/             # Pipeline 模板
-        └── {templateId}.json
+│   └── agents/                   # Agent prompt files
+│       ├── Planner.md
+│       ├── Implementer.md
+│       ├── Verifier.md
+│       └── Analyzer.md
+├── .harness/
+│   ├── harness.json              # Current harness definition
+│   ├── agents.json               # Enabled agents config
+│   ├── agents/                   # Per-agent config
+│   │   ├── Planner.json          # { allowedTools, maxTurns }
+│   │   └── ...
+│   ├── extensions.json           # Enabled extensions
+│   ├── extensions/               # Extension prompt files
+│   │   └── {extensionId}/
+│   │       └── prompt.md
+│   ├── templates/                # Saved harness templates
+│   │   └── {templateId}.json
+│   ├── runs/                     # Active runs
+│   │   └── {runId}/
+│   │       ├── run.json          # Run metadata
+│   │       ├── inputs/
+│   │       │   └── requirements.md
+│   │       └── outputs/
+│   │           ├── dev-plan.md
+│   │           └── verification-report.md
+│   ├── archive/                  # Archived runs
+│   │   └── {YYYY-MM-DD-name}/
+│   └── domains/                  # Domain knowledge modules
+│       └── {domain-slug}/
+│           ├── domain.json
+│           ├── slots.json
+│           └── {slot-files}
 ```
 
-## 工作流
+## Workflow
 
 ```
-创建变更 → 编写需求 → 选择/编排 Pipeline → 执行 Pipeline → 归档
-   │                        │                    │
-   ├── requirements.md      ├── 拖拽 Agent       ├── Planner → dev-plan.md
-   └── meta.json             ├── 连线端口          ├── Implementer → 代码
-                             └── 配置覆盖          └── Verifier → verification-report.md
+Create Run -> Edit Requirements -> Configure Harness -> Execute -> Review -> Archive
 ```
 
-1. **创建变更**：命名并选择 Pipeline 模板，可预填需求草稿
-2. **编写需求**：在 ContentTabs 中编辑 `requirements.md`
-3. **编排 Pipeline**：通过 PipelineCanvas 可视化编辑 Agent 工作流
-4. **执行 Pipeline**：按拓扑顺序依次调用 Claude CLI 执行每个 Agent
-5. **查看结果**：实时查看终端输出，审阅生成的文件
-6. **归档**：完成后将变更归档保存
+1. **Create Run** — Name the run and select a harness template
+2. **Edit Requirements** — Write `requirements.md` in the file editor
+3. **Configure Harness** — Drag agents onto canvas, draw connections, set overrides
+4. **Execute** — Click Run; the engine topologically sorts nodes and executes agents sequentially via the SDK sidecar
+5. **Review** — Watch real-time terminal output; inspect generated files (dev plan, code, verification report)
+6. **Archive** — Archive the completed run for reference
 
-## Pipeline 执行引擎
+## Execution Engine
 
-执行流程：
+The `HarnessExecutor` drives execution:
 
-1. **拓扑排序**：根据边的依赖关系计算节点执行顺序
-2. **输入解析**：从上游节点输出或端口默认值获取输入文件内容
-3. **模板渲染**：将 `{{changeName}}` 等变量替换为实际值
-4. **Agent 调用**：通过 Claude CLI 子进程执行 Agent，流式输出到终端
-5. **状态追踪**：实时更新节点状态 (idle → running → success/failure)
-6. **错误处理**：节点失败时跳过其下游依赖节点，非依赖节点继续执行
+1. **Topological sort** — Compute node execution order from edge dependencies
+2. **Sequential execution** — For each node in order:
+   - Skip if a predecessor failed
+   - Build `RunRequest` with agent name, prompt, and overrides
+   - Spawn SDK sidecar, stream output
+   - Track status: idle -> waiting -> running -> success/failure
+3. **Streaming output** — SDKMessage events are parsed and rendered in real-time (assistant text, tool calls, tool results, system info)
+4. **Partial streaming** — When `includePartialMessages` is enabled, text deltas are displayed as they arrive
+5. **Session resume** — Session IDs are persisted; runs can be resumed with conversation context
 
-## 开发
+## SDK Features
 
-### 环境准备
+The RunRequest protocol supports the full Claude Agent SDK feature set:
+
+| Feature | Description |
+|---------|-------------|
+| `agents` | Multi-agent definitions (prompt, tools, model per agent) |
+| `model` | Model selection (sonnet, opus, haiku) |
+| `maxTurns` | Maximum conversation turns |
+| `maxBudgetUsd` | Cost cap per run |
+| `permissionMode` | Permission control (default, acceptEdits, bypassPermissions, plan) |
+| `mcpServers` | MCP server configuration (stdio, sse, http) |
+| `hooks` | Lifecycle hooks (PreToolUse, PostToolUse, Stop, etc.) |
+| `includePartialMessages` | Real-time streaming of text deltas |
+| `overrides` | Per-agent overrides (maxTurns, allowedTools, model, promptExtra) |
+| `resume` | Session resume via session ID |
+
+## Development
+
+### Prerequisites
 
 - Node.js
 - Rust toolchain
 - Tauri CLI
-- Claude CLI (用于 Agent 执行)
+- Claude CLI (`npm install -g @anthropic-ai/claude-code`)
 
-### 启动开发
+### Dev Server
 
 ```bash
-# 安装依赖
 npm install
-
-# 启动开发服务器 (Tauri + Vite)
-npm run tauri dev
+npm run dev          # Tauri + Vite dev server
+npm run vite:dev     # Vite only (browser debug)
 ```
 
-### 构建
+### Build
 
 ```bash
-npm run tauri build
+npm run build        # Full Tauri desktop build
 ```
 
-## 许可证
+## License
 
 Private
