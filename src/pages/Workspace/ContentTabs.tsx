@@ -13,9 +13,9 @@ import {
   Bot,
 } from 'lucide-react';
 import MarkdownRenderer from '../../components/MarkdownRenderer';
-import type { TabDescriptor, AgentMeta } from '../../types/pipeline';
+import type { FileTab, AgentCategory } from '../../types/harness';
 
-const CATEGORY_ICONS: Record<AgentMeta['category'], React.ElementType> = {
+const CATEGORY_ICONS: Record<AgentCategory, React.ElementType> = {
   planner: FileText,
   implementer: Code2,
   verifier: ClipboardCheck,
@@ -26,14 +26,14 @@ const CATEGORY_ICONS: Record<AgentMeta['category'], React.ElementType> = {
 interface ContentTabsProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
-  tabs: TabDescriptor[];
+  tabs: FileTab[];
   documents: Record<string, string>;
   editingTabId: string | null;
   isRunning: boolean;
   onEditingChange: (tabId: string | null) => void;
   onDocumentChange: (tabId: string, content: string) => void;
   onSaveDocument: (tabId: string) => void;
-  onRunPipeline: () => void;
+  onRunHarness: () => void;
 }
 
 export default function ContentTabs({
@@ -46,15 +46,15 @@ export default function ContentTabs({
   onEditingChange,
   onDocumentChange,
   onSaveDocument,
-  onRunPipeline,
+  onRunHarness,
 }: ContentTabsProps) {
   if (tabs.length === 0) {
     return (
       <div className="glass-card rounded-2xl flex items-center justify-center h-full">
         <div className="text-center px-8">
           <FileText className="w-10 h-10 text-muted-foreground/20 mb-3 mx-auto" />
-          <p className="text-sm text-muted-foreground">暂无文档标签</p>
-          <p className="text-xs text-muted-foreground/50 mt-1">请先配置流程编排</p>
+          <p className="text-sm text-muted-foreground">No file tabs</p>
+          <p className="text-xs text-muted-foreground/50 mt-1">Design a harness first</p>
         </div>
       </div>
     );
@@ -70,7 +70,7 @@ export default function ContentTabs({
         <div className="border-b border-border/30 px-4 shrink-0">
           <TabsList variant="line" className="h-auto p-0 gap-0">
             {tabs.map((tab) => {
-              const Icon = CATEGORY_ICONS[tab.category] ?? FileText;
+              const Icon = CATEGORY_ICONS[tab.agentCategory] ?? FileText;
               const hasContent = !!(documents[tab.id]?.trim());
               return (
                 <TabsTrigger
@@ -99,7 +99,7 @@ export default function ContentTabs({
                 onCancelEdit={() => onEditingChange(null)}
                 onContentChange={(val) => onDocumentChange(tab.id, val)}
                 onSave={() => onSaveDocument(tab.id)}
-                onRunPipeline={onRunPipeline}
+                onRunHarness={onRunHarness}
               />
             </TabsContent>
           ))}
@@ -110,7 +110,7 @@ export default function ContentTabs({
 }
 
 interface TabPanelProps {
-  tab: TabDescriptor;
+  tab: FileTab;
   content: string;
   isEditing: boolean;
   isRunning: boolean;
@@ -118,7 +118,7 @@ interface TabPanelProps {
   onCancelEdit: () => void;
   onContentChange: (val: string) => void;
   onSave: () => void;
-  onRunPipeline: () => void;
+  onRunHarness: () => void;
 }
 
 function TabPanel({
@@ -130,9 +130,9 @@ function TabPanel({
   onCancelEdit,
   onContentChange,
   onSave,
-  onRunPipeline,
+  onRunHarness,
 }: TabPanelProps) {
-  const Icon = CATEGORY_ICONS[tab.category] ?? FileText;
+  const Icon = CATEGORY_ICONS[tab.agentCategory] ?? FileText;
 
   if (tab.editable && isEditing) {
     return (
@@ -140,16 +140,16 @@ function TabPanel({
         <Textarea
           value={content}
           onChange={(e) => onContentChange(e.target.value)}
-          placeholder={`输入${tab.label}内容（Markdown 格式）...`}
+          placeholder={`Enter ${tab.label} content (Markdown)...`}
           className="flex-1 min-h-0 font-mono text-xs border-0 rounded-none resize-none focus-visible:ring-0"
         />
         <div className="flex gap-2 px-5 py-3 border-t border-border/20 shrink-0">
           <Button size="sm" className="gap-1.5" onClick={onSave}>
             <Save className="w-3.5 h-3.5" />
-            保存
+            Save
           </Button>
           <Button variant="ghost" size="sm" onClick={onCancelEdit}>
-            取消
+            Cancel
           </Button>
         </div>
       </div>
@@ -168,7 +168,7 @@ function TabPanel({
               onClick={onEdit}
             >
               <Pencil className="w-3 h-3" />
-              编辑
+              Edit
             </Button>
           </div>
         )}
@@ -185,9 +185,9 @@ function TabPanel({
     return (
       <div className="flex flex-col items-center justify-center h-full text-center px-8">
         <Icon className="w-10 h-10 text-muted-foreground/20 mb-3" />
-        <p className="text-sm text-muted-foreground mb-3">暂无{tab.label}</p>
+        <p className="text-sm text-muted-foreground mb-3">No {tab.label} yet</p>
         <Button variant="outline" onClick={onEdit} className="cursor-pointer">
-          输入{tab.label}
+          Write {tab.label}
         </Button>
       </div>
     );
@@ -196,14 +196,14 @@ function TabPanel({
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-8">
       <Icon className="w-10 h-10 text-muted-foreground/20 mb-3" />
-      <p className="text-sm text-muted-foreground mb-3">尚未生成{tab.label}</p>
+      <p className="text-sm text-muted-foreground mb-3">{tab.label} not generated yet</p>
       <Button
         disabled={isRunning}
         className="gap-1.5 cursor-pointer"
-        onClick={onRunPipeline}
+        onClick={onRunHarness}
       >
         <Zap className="w-3.5 h-3.5" />
-        运行流程
+        Execute Harness
       </Button>
     </div>
   );

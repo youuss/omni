@@ -12,7 +12,7 @@ export default function AppLayout() {
   const isInWorkspace = location.pathname.startsWith('/workspace/');
 
   const navItems = [
-    { key: '/projects', icon: LayoutGrid, label: '项目列表' },
+    { key: '/projects', icon: LayoutGrid, label: 'Projects' },
     ...projects.map((p) => ({
       key: `/workspace/${encodeURIComponent(p.path)}`,
       icon: FolderOpen,
@@ -61,7 +61,7 @@ export default function AppLayout() {
           <header className="flex items-center h-11 border-b border-border/40 glass px-5 shrink-0">
             <nav className="flex items-center gap-1.5 text-xs">
               <span className="text-foreground font-medium">
-                {location.pathname === '/projects' ? '项目管理' : ''}
+                {location.pathname === '/projects' ? 'Projects' : ''}
               </span>
             </nav>
           </header>
@@ -84,7 +84,7 @@ export default function AppLayout() {
             )}
           </div>
           <span className="text-[10px] text-muted-foreground/40">
-            {projects.length} 项目
+            {projects.length} projects
           </span>
         </footer>
       </div>

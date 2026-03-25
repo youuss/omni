@@ -22,7 +22,7 @@ export default function OutputStream() {
     <div className="flex flex-col h-full glass-subtle">
       <div className="px-4 py-1.5 border-b border-border/20 flex items-center justify-between shrink-0">
         <span className="text-[10px] uppercase tracking-widest text-muted-foreground/60">
-          输出日志
+          Output Log
         </span>
         <button
           onClick={clear}
@@ -33,7 +33,7 @@ export default function OutputStream() {
       </div>
       <div className="flex-1 overflow-auto px-4 py-2 font-mono text-[11px] leading-[18px]">
         {lines.length === 0 ? (
-          <span className="text-muted-foreground/40">等待输出...</span>
+          <span className="text-muted-foreground/40">Waiting for output...</span>
         ) : (
           lines.map((line) => (
             <div key={line.id} className="mb-px flex gap-2">

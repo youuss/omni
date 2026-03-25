@@ -1,6 +1,5 @@
 pub mod project;
-pub mod spec;
+pub mod harness;
 pub mod file;
 pub mod agents;
-pub mod skills;
-pub mod pipeline;
+pub mod extensions;

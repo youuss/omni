@@ -7,8 +7,8 @@ pub struct ProjectInfo {
     pub path: String,
     pub name: String,
     pub is_git: bool,
-    pub has_specs: bool,
-    pub active_changes: Vec<String>,
+    pub has_harness: bool,
+    pub active_runs: Vec<String>,
     pub last_opened: String,
 }
 
@@ -20,15 +20,15 @@ struct SavedProject {
 
 fn projects_json_path() -> Result<std::path::PathBuf, String> {
     let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"))
-        .map_err(|_| "无法获取用户主目录")?;
-    let config_dir = Path::new(&home).join(".omni");
+        .map_err(|_| "Cannot determine home directory".to_string())?;
+    let config_dir = Path::new(&home).join(".harness");
     Ok(config_dir.join("projects.json"))
 }
 
 fn ensure_config_dir() -> Result<std::path::PathBuf, String> {
     let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"))
-        .map_err(|_| "无法获取用户主目录")?;
-    let config_dir = Path::new(&home).join(".omni");
+        .map_err(|_| "Cannot determine home directory".to_string())?;
+    let config_dir = Path::new(&home).join(".harness");
     fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
     Ok(config_dir)
 }
@@ -54,20 +54,20 @@ fn save_projects_json(projects: &[SavedProject]) -> Result<(), String> {
 pub fn open_project(path: String) -> Result<ProjectInfo, String> {
     let project_path = Path::new(&path);
     if !project_path.exists() {
-        return Err("路径不存在".to_string());
+        return Err("Path does not exist".to_string());
     }
     if !project_path.is_dir() {
-        return Err("路径不是目录".to_string());
+        return Err("Path is not a directory".to_string());
     }
 
     let is_git = project_path.join(".git").exists();
-    let specs_dir = project_path.join(".specs");
-    let has_specs = specs_dir.exists() && specs_dir.is_dir();
+    let harness_dir = project_path.join(".harness");
+    let has_harness = harness_dir.exists() && harness_dir.is_dir();
 
-    let active_changes: Vec<String> = if has_specs {
-        let active_dir = specs_dir.join("active");
-        if active_dir.exists() {
-            fs::read_dir(&active_dir)
+    let active_runs: Vec<String> = if has_harness {
+        let runs_dir = harness_dir.join("runs");
+        if runs_dir.exists() {
+            fs::read_dir(&runs_dir)
                 .map_err(|e| e.to_string())?
                 .filter_map(|e| e.ok())
                 .filter(|e| e.path().is_dir())
@@ -96,8 +96,8 @@ pub fn open_project(path: String) -> Result<ProjectInfo, String> {
         path: path.clone(),
         name,
         is_git,
-        has_specs,
-        active_changes,
+        has_harness,
+        active_runs,
         last_opened,
     })
 }

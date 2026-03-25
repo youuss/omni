@@ -1,5 +1,5 @@
 interface SessionRecord {
-  changeName: string;
+  runId: string;
   stage: string;
   sessionId: string;
   createdAt: string;
@@ -7,34 +7,34 @@ interface SessionRecord {
 
 const sessions = new Map<string, SessionRecord>();
 
-function makeKey(changeName: string, stage: string): string {
-  return `${changeName}::${stage}`;
+function makeKey(runId: string, stage: string): string {
+  return `${runId}::${stage}`;
 }
 
 export function saveSession(
-  changeName: string,
+  runId: string,
   stage: string,
   sessionId: string
 ): void {
-  sessions.set(makeKey(changeName, stage), {
-    changeName,
+  sessions.set(makeKey(runId, stage), {
+    runId,
     stage,
     sessionId,
     createdAt: new Date().toISOString(),
   });
 }
 
-export function getSession(changeName: string, stage: string): string | null {
-  return sessions.get(makeKey(changeName, stage))?.sessionId ?? null;
+export function getSession(runId: string, stage: string): string | null {
+  return sessions.get(makeKey(runId, stage))?.sessionId ?? null;
 }
 
-export function clearSession(changeName: string, stage: string): void {
-  sessions.delete(makeKey(changeName, stage));
+export function clearSession(runId: string, stage: string): void {
+  sessions.delete(makeKey(runId, stage));
 }
 
-export function clearAllSessions(changeName: string): void {
+export function clearAllSessions(runId: string): void {
   for (const key of sessions.keys()) {
-    if (key.startsWith(`${changeName}::`)) {
+    if (key.startsWith(`${runId}::`)) {
       sessions.delete(key);
     }
   }

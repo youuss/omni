@@ -26,63 +26,67 @@ import {
   Play,
   Archive,
 } from 'lucide-react';
-import type { ProjectInfo, ChangeInfo } from '../../types';
+import type { ProjectInfo } from '../../types';
+import type { RunInfo } from '../../types/run';
 
 interface WorkspaceHeaderProps {
   project: ProjectInfo;
-  changeName: string | null;
+  runId: string | null;
   claudeAvailable: boolean | null;
-  changes: ChangeInfo[];
+  runs: RunInfo[];
   isRunning: boolean;
-  pipelineReady: boolean;
-  onSelectChange: (name: string) => void;
-  onCreateChange: () => void;
-  onRunPipeline: () => void;
+  harnessReady: boolean;
+  onSelectRun: (id: string) => void;
+  onCreateRun: () => void;
+  onRunHarness: () => void;
   onAbort: () => void;
   onArchive: () => void;
 }
 
 export default function WorkspaceHeader({
   project,
-  changeName,
+  runId,
   claudeAvailable,
-  changes,
+  runs,
   isRunning,
-  pipelineReady,
-  onSelectChange,
-  onCreateChange,
-  onRunPipeline,
+  harnessReady,
+  onSelectRun,
+  onCreateRun,
+  onRunHarness,
   onAbort,
   onArchive,
 }: WorkspaceHeaderProps) {
   return (
     <div className="flex items-center gap-3 px-5 h-12 border-b border-border/40 glass shrink-0">
-      {/* Project + Change Selector */}
       <div className="flex items-center gap-2 min-w-0">
         <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/8 text-primary shrink-0">
           <FolderOpen className="w-3.5 h-3.5" />
         </div>
         <span className="text-xs font-semibold truncate max-w-[120px]">{project.name}</span>
 
-        {changeName && (
+        {runId && (
           <>
             <span className="text-muted-foreground/30 text-xs">/</span>
             <DropdownMenu>
               <DropdownMenuTrigger className="flex items-center gap-1 text-xs font-medium hover:text-primary transition-colors max-w-[160px] cursor-pointer">
-                <span className="truncate">{changeName}</span>
+                <span className="truncate">{runId}</span>
                 <ChevronDown className="w-3 h-3 shrink-0 text-muted-foreground" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="min-w-[200px]">
-                {changes.map((c) => (
-                  <DropdownMenuItem key={c.name} onClick={() => onSelectChange(c.name)} className="text-xs">
-                    <span className="truncate">{c.name}</span>
-                    {c.has_dev_plan && <Badge variant="secondary" className="text-[8px] h-3.5 px-1 ml-auto">规划</Badge>}
+                {runs.map((r) => (
+                  <DropdownMenuItem key={r.id} onClick={() => onSelectRun(r.id)} className="text-xs">
+                    <span className="truncate">{r.id}</span>
+                    {r.outputFiles.length > 0 && (
+                      <Badge variant="secondary" className="text-[8px] h-3.5 px-1 ml-auto">
+                        {r.outputFiles.length} outputs
+                      </Badge>
+                    )}
                   </DropdownMenuItem>
                 ))}
-                {changes.length > 0 && <DropdownMenuSeparator />}
-                <DropdownMenuItem onClick={onCreateChange} className="text-xs gap-1.5">
+                {runs.length > 0 && <DropdownMenuSeparator />}
+                <DropdownMenuItem onClick={onCreateRun} className="text-xs gap-1.5">
                   <Plus className="w-3 h-3" />
-                  新建变更
+                  New Run
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -92,21 +96,20 @@ export default function WorkspaceHeader({
         {isRunning && (
           <Badge variant="secondary" className="text-[9px] h-5 shrink-0 gap-1">
             <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-            运行中
+            Running
           </Badge>
         )}
 
         {claudeAvailable === false && (
           <Badge variant="destructive" className="text-[9px] h-5 shrink-0">
-            Claude CLI 未检测到
+            Claude CLI not detected
           </Badge>
         )}
       </div>
 
       <div className="flex-1" />
 
-      {/* Action Buttons */}
-      {changeName && (
+      {runId && (
         <div className="flex items-center gap-1.5">
           {isRunning ? (
             <Button
@@ -116,17 +119,17 @@ export default function WorkspaceHeader({
               onClick={onAbort}
             >
               <Square className="w-3 h-3" />
-              中止
+              Abort
             </Button>
           ) : (
             <Button
               size="xs"
               className="gap-1 h-7 text-[11px]"
-              disabled={!pipelineReady}
-              onClick={onRunPipeline}
+              disabled={!harnessReady}
+              onClick={onRunHarness}
             >
               <Play className="w-3 h-3" />
-              运行
+              Execute
             </Button>
           )}
 
@@ -137,27 +140,26 @@ export default function WorkspaceHeader({
               }
             >
               <Archive className="w-3 h-3" />
-              归档
+              Archive
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>确认归档？</AlertDialogTitle>
-                <AlertDialogDescription>将把此变更从 active 移动到 archive</AlertDialogDescription>
+                <AlertDialogTitle>Confirm archive?</AlertDialogTitle>
+                <AlertDialogDescription>This will move the run from active to archive.</AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>取消</AlertDialogCancel>
-                <AlertDialogAction onClick={onArchive}>确认</AlertDialogAction>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={onArchive}>Confirm</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
         </div>
       )}
 
-      {/* New Change (when no change selected) */}
-      {!changeName && (
-        <Button variant="outline" size="sm" className="gap-1.5 h-7 text-xs" onClick={onCreateChange}>
+      {!runId && (
+        <Button variant="outline" size="sm" className="gap-1.5 h-7 text-xs" onClick={onCreateRun}>
           <Plus className="w-3 h-3" />
-          新建变更
+          New Run
         </Button>
       )}
     </div>

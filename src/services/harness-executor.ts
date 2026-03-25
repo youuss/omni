@@ -1,33 +1,31 @@
 import { runAgent } from './claude/claude-runner';
-import type { AgentMeta, PipelineDefinition, PipelineEdge, NodeExecutionStatus } from '../types/pipeline';
-import type { ClaudeStreamEvent, AgentRunHandle } from '../types/claude';
+import type { AgentDefinition, HarnessDefinition, HarnessConnection, NodeStatus } from '../types/harness';
+import type { SDKMessage, AgentRunHandle } from '../types/claude';
 
 export interface NodeState {
   nodeId: string;
   agentId: string;
-  status: NodeExecutionStatus;
-  resolvedInputs: Record<string, string>;
-  outputs: Record<string, string>;
+  status: NodeStatus;
   error?: string;
 }
 
 export interface ExecutorCallbacks {
-  onNodeStatusChange: (nodeId: string, status: NodeExecutionStatus, error?: string) => void;
+  onNodeStatusChange: (nodeId: string, status: NodeStatus, error?: string) => void;
   onNodeOutputs: (nodeId: string, outputs: Record<string, string>) => void;
-  onEvent: (nodeId: string, event: ClaudeStreamEvent) => void;
+  onEvent: (nodeId: string, event: SDKMessage) => void;
   onStatus: (nodeId: string, text: string) => void;
   onError: (nodeId: string, text: string) => void;
-  onPipelineDone: (success: boolean) => void;
+  onHarnessDone: (success: boolean) => void;
 }
 
 interface ExecutorContext {
   projectPath: string;
-  changeName: string;
+  runId: string;
 }
 
 function topoSort(
   nodeIds: string[],
-  edges: PipelineEdge[]
+  connections: HarnessConnection[]
 ): string[] {
   const inDegree = new Map<string, number>();
   const adjacency = new Map<string, string[]>();
@@ -37,10 +35,10 @@ function topoSort(
     adjacency.set(id, []);
   }
 
-  for (const edge of edges) {
-    const prev = inDegree.get(edge.target) ?? 0;
-    inDegree.set(edge.target, prev + 1);
-    adjacency.get(edge.source)?.push(edge.target);
+  for (const conn of connections) {
+    const prev = inDegree.get(conn.targetNodeId) ?? 0;
+    inDegree.set(conn.targetNodeId, prev + 1);
+    adjacency.get(conn.sourceNodeId)?.push(conn.targetNodeId);
   }
 
   const queue: string[] = [];
@@ -60,7 +58,7 @@ function topoSort(
   }
 
   if (sorted.length !== nodeIds.length) {
-    throw new Error('Pipeline 存在循环依赖');
+    throw new Error('Harness contains circular dependencies');
   }
 
   return sorted;
@@ -75,9 +73,9 @@ function interpolateTemplate(
   });
 }
 
-export class PipelineExecutor {
-  private pipeline: PipelineDefinition;
-  private agents: Map<string, AgentMeta>;
+export class HarnessExecutor {
+  private harness: HarnessDefinition;
+  private agents: Map<string, AgentDefinition>;
   private context: ExecutorContext;
   private callbacks: ExecutorCallbacks;
   private nodeStates: Map<string, NodeState>;
@@ -85,36 +83,34 @@ export class PipelineExecutor {
   private currentHandle: AgentRunHandle | null = null;
 
   constructor(
-    pipeline: PipelineDefinition,
-    agents: Map<string, AgentMeta>,
+    harness: HarnessDefinition,
+    agents: Map<string, AgentDefinition>,
     context: ExecutorContext,
     callbacks: ExecutorCallbacks
   ) {
-    this.pipeline = pipeline;
+    this.harness = harness;
     this.agents = agents;
     this.context = context;
     this.callbacks = callbacks;
     this.nodeStates = new Map();
 
-    for (const node of pipeline.nodes) {
+    for (const node of harness.nodes) {
       this.nodeStates.set(node.id, {
         nodeId: node.id,
         agentId: node.agentId,
         status: 'idle',
-        resolvedInputs: {},
-        outputs: {},
       });
     }
   }
 
   async execute(): Promise<void> {
-    const nodeIds = this.pipeline.nodes.map((n) => n.id);
+    const nodeIds = this.harness.nodes.map((n) => n.id);
     let order: string[];
 
     try {
-      order = topoSort(nodeIds, this.pipeline.edges);
+      order = topoSort(nodeIds, this.harness.connections);
     } catch (e) {
-      this.callbacks.onPipelineDone(false);
+      this.callbacks.onHarnessDone(false);
       throw e;
     }
 
@@ -131,9 +127,9 @@ export class PipelineExecutor {
         continue;
       }
 
-      const predecessorFailed = this.pipeline.edges
-        .filter((e) => e.target === nodeId)
-        .some((e) => this.nodeStates.get(e.source)?.status === 'failure');
+      const predecessorFailed = this.harness.connections
+        .filter((c) => c.targetNodeId === nodeId)
+        .some((c) => this.nodeStates.get(c.sourceNodeId)?.status === 'failure');
 
       if (predecessorFailed) {
         this.callbacks.onNodeStatusChange(nodeId, 'skipped');
@@ -148,52 +144,40 @@ export class PipelineExecutor {
       }
     }
 
-    this.callbacks.onPipelineDone(allSuccess);
+    this.callbacks.onHarnessDone(allSuccess);
   }
 
   async executeNode(nodeId: string): Promise<void> {
-    const pipelineNode = this.pipeline.nodes.find((n) => n.id === nodeId);
-    if (!pipelineNode) throw new Error(`节点 ${nodeId} 不存在`);
+    const harnessNode = this.harness.nodes.find((n) => n.id === nodeId);
+    if (!harnessNode) throw new Error(`Node ${nodeId} not found`);
 
-    const agentMeta = this.agents.get(pipelineNode.agentId);
-    if (!agentMeta) throw new Error(`Agent ${pipelineNode.agentId} 未找到`);
+    const agentDef = this.agents.get(harnessNode.agentId);
+    if (!agentDef) throw new Error(`Agent ${harnessNode.agentId} not found`);
 
     this.callbacks.onNodeStatusChange(nodeId, 'running');
 
-    const resolvedInputs = this.resolveInputs(nodeId, agentMeta);
-    const state = this.nodeStates.get(nodeId)!;
-    state.resolvedInputs = resolvedInputs;
-
-    const allVars: Record<string, string> = {
-      ...resolvedInputs,
-      changeName: this.context.changeName,
+    const vars: Record<string, string> = {
+      runId: this.context.runId,
     };
 
-    for (const port of agentMeta.outputPorts) {
-      if (port.defaultValue) {
-        const resolved = interpolateTemplate(port.defaultValue, { changeName: this.context.changeName });
-        allVars[port.id] = resolved;
-        state.outputs[port.id] = resolved;
-      }
+    let prompt = agentDef.promptTemplate
+      ? interpolateTemplate(agentDef.promptTemplate, vars)
+      : `Execute ${agentDef.name} task`;
+
+    if (harnessNode.constraints?.promptExtra) {
+      prompt += `\n\n---\nAdditional instructions:\n${harnessNode.constraints.promptExtra}`;
     }
 
-    let prompt = agentMeta.promptTemplate
-      ? interpolateTemplate(agentMeta.promptTemplate, allVars)
-      : `执行 ${agentMeta.name} 任务`;
-
-    if (pipelineNode.configOverrides?.promptExtra) {
-      prompt += `\n\n---\n附加指令：\n${pipelineNode.configOverrides.promptExtra}`;
-    }
-
-    const maxTurns = pipelineNode.configOverrides?.maxTurns ?? agentMeta.maxTurns;
-    const allowedTools = pipelineNode.configOverrides?.allowedTools ?? agentMeta.allowedTools;
+    const maxTurns = harnessNode.constraints?.maxTurns ?? agentDef.maxTurns;
+    const allowedTools = harnessNode.constraints?.allowedTools ?? agentDef.allowedTools;
+    const state = this.nodeStates.get(nodeId)!;
 
     return new Promise<void>((resolve, reject) => {
       runAgent({
-        agentName: pipelineNode.agentId,
+        agentName: harnessNode.agentId,
         prompt,
         cwd: this.context.projectPath,
-        changeName: this.context.changeName,
+        runId: this.context.runId,
         maxTurnsOverride: maxTurns,
         allowedToolsOverride: allowedTools,
         onEvent: (event) => this.callbacks.onEvent(nodeId, event),
@@ -205,7 +189,7 @@ export class PipelineExecutor {
           state.status = success ? 'success' : 'failure';
 
           if (!success) {
-            state.error = `退出码 ${code}`;
+            state.error = `Exit code ${code}`;
           }
 
           this.callbacks.onNodeStatusChange(
@@ -215,7 +199,7 @@ export class PipelineExecutor {
           );
 
           if (success) {
-            this.callbacks.onNodeOutputs(nodeId, state.outputs);
+            this.callbacks.onNodeOutputs(nodeId, {});
           }
 
           success ? resolve() : reject(new Error(state.error));
@@ -234,42 +218,5 @@ export class PipelineExecutor {
   abort(): void {
     this.aborted = true;
     this.currentHandle?.abort();
-  }
-
-  private resolveInputs(
-    nodeId: string,
-    agentMeta: AgentMeta
-  ): Record<string, string> {
-    const resolved: Record<string, string> = {};
-
-    for (const port of agentMeta.inputPorts) {
-      const incomingEdge = this.pipeline.edges.find(
-        (e) => e.target === nodeId && e.targetPort === port.id
-      );
-
-      if (incomingEdge) {
-        const sourceState = this.nodeStates.get(incomingEdge.source);
-        const sourceValue = sourceState?.outputs[incomingEdge.sourcePort];
-        if (sourceValue) {
-          resolved[port.id] = sourceValue;
-          continue;
-        }
-      }
-
-      if (port.defaultValue) {
-        resolved[port.id] = interpolateTemplate(port.defaultValue, {
-          changeName: this.context.changeName,
-        });
-        continue;
-      }
-
-      if (port.required) {
-        throw new Error(
-          `节点 ${nodeId} 的必需输入端口 "${port.name}" 未连接且无默认值`
-        );
-      }
-    }
-
-    return resolved;
   }
 }

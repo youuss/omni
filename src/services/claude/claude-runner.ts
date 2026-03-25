@@ -1,23 +1,24 @@
 import { Command } from '@tauri-apps/plugin-shell';
 import { invoke } from '@tauri-apps/api/core';
-import { join } from '@tauri-apps/api/path';
+import { join, resolveResource } from '@tauri-apps/api/path';
 import { loadAgentConfig } from './agent-config-service';
-import { getEnabledSkillPaths } from '../skill-service';
+import { getEnabledExtensionPaths } from '../extension-service';
 import { parseStreamLine, extractSessionId } from './stream-parser';
 import { saveSession, getSession } from './session-store';
-import type { AgentName, ClaudeStreamEvent, AgentRunHandle } from '../../types';
+import type { AgentName, SDKMessage, SDKRunnerConfig, AgentRunHandle } from '../../types';
 
-export type EventCallback = (event: ClaudeStreamEvent) => void;
+export const FULL_COMMAND_LOG_STORAGE_KEY = 'omni.show-full-claude-command';
+
+export type EventCallback = (event: SDKMessage) => void;
 export type ErrorCallback = (text: string) => void;
 export type DoneCallback = (code: number | null) => void;
 export type StatusCallback = (text: string) => void;
-export const FULL_COMMAND_LOG_STORAGE_KEY = 'omni.show-full-claude-command';
 
 interface RunAgentOptions {
   agentName: AgentName;
   prompt: string;
   cwd: string;
-  changeName?: string;
+  runId?: string;
   onEvent: EventCallback;
   onError?: ErrorCallback;
   onStatus?: StatusCallback;
@@ -25,37 +26,6 @@ interface RunAgentOptions {
   resumeSession?: boolean;
   maxTurnsOverride?: number;
   allowedToolsOverride?: string[];
-}
-
-function quoteCliArg(arg: string): string {
-  if (arg.length === 0) return '""';
-  if (!/[^\w@%+=:,./-]/.test(arg)) return arg;
-  return `"${arg.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-}
-
-function renderCommandPreview(args: string[], promptIndex: number): string {
-  const rendered = args.map((arg, idx) => {
-    // prompt 可能不是最后一个参数（例如 --allowedTools 为可变参数）
-    if (idx === promptIndex) {
-      const singleLine = arg.replace(/\s+/g, ' ').trim();
-      const maxLen = 200;
-      const clipped =
-        singleLine.length > maxLen
-          ? `${singleLine.slice(0, maxLen)}...`
-          : singleLine;
-      return quoteCliArg(clipped);
-    }
-    return quoteCliArg(arg);
-  });
-  return `claude ${rendered.join(' ')}`;
-}
-
-function shouldShowFullCommand(): boolean {
-  try {
-    return window.localStorage.getItem(FULL_COMMAND_LOG_STORAGE_KEY) === '1';
-  } catch {
-    return false;
-  }
 }
 
 function isBenignStdinWarning(text: string): boolean {
@@ -73,7 +43,7 @@ export async function runAgent(
     agentName,
     prompt,
     cwd,
-    changeName,
+    runId,
     onEvent,
     onError,
     onStatus,
@@ -83,98 +53,92 @@ export async function runAgent(
     allowedToolsOverride,
   } = options;
 
-  const [config, enabledSkillPaths] = await Promise.all([
+  const [config, enabledExtPaths] = await Promise.all([
     loadAgentConfig(cwd, agentName),
-    getEnabledSkillPaths(cwd),
+    getEnabledExtensionPaths(cwd),
   ]);
 
   const effectiveMaxTurns = maxTurnsOverride ?? config.maxTurns;
   const effectiveTools = allowedToolsOverride ?? config.allowedTools;
 
-  // 查找 agent 定义文件：.claude/agents/{Name}.md
+  // Read agent system prompt from .claude/agents/{Name}.md
   const agentDefPath = await join(cwd, '.claude', 'agents', `${agentName}.md`);
-  const agentDefExists: boolean = await invoke<string>('read_text_file', {
-    path: agentDefPath,
-  })
-    .then(() => true)
-    .catch(() => false);
-
-  if (agentDefExists) {
-    onStatus?.(`[agent] 定义文件: ${agentDefPath}`);
-  } else {
-    onStatus?.(
-      `[agent] 未找到定义文件 ${agentDefPath}，将使用 Claude 默认行为`
-    );
+  let systemPrompt: string | undefined;
+  try {
+    systemPrompt = await invoke<string>('read_text_file', { path: agentDefPath });
+    onStatus?.(`[agent] Definition file: ${agentDefPath}`);
+  } catch {
+    onStatus?.(`[agent] Definition file not found: ${agentDefPath}, using Claude defaults`);
   }
 
-  if (enabledSkillPaths.length > 0) {
+  // Append extension prompts
+  let appendSystemPrompt: string | undefined;
+  if (enabledExtPaths.length > 0) {
     onStatus?.(
-      `[skills] 注入 ${enabledSkillPaths.length} 个技能: ${enabledSkillPaths
+      `[extensions] Injecting ${enabledExtPaths.length} extensions: ${enabledExtPaths
         .map((p) => p.split('/').slice(-2, -1)[0])
         .join(', ')}`
     );
+    const extContents = await Promise.all(
+      enabledExtPaths.map((p) => invoke<string>('read_text_file', { path: p }).catch(() => ''))
+    );
+    const merged = extContents.filter(Boolean).join('\n\n---\n\n');
+    if (merged) appendSystemPrompt = merged;
   }
 
-  const args: string[] = [
-    '--print',
-    '--output-format',
-    'stream-json',
-    '--verbose',
-    '--dangerously-skip-permissions',
-    '--max-turns',
-    String(effectiveMaxTurns),
-  ];
+  // Build SDK runner config
+  const sdkConfig: SDKRunnerConfig = {
+    prompt,
+    cwd,
+    maxTurns: effectiveMaxTurns,
+    permissionMode: 'bypassPermissions',
+    settingSources: ['project'],
+  };
 
-  // agent 定义作为主 system prompt（--system-prompt-file 会替换默认 prompt）
-  if (agentDefExists) {
-    args.push('--system-prompt-file', agentDefPath);
+  if (systemPrompt) {
+    sdkConfig.systemPrompt = systemPrompt;
   }
-
-  // 技能追加在 agent system prompt 之后（--append-system-prompt-file 叠加，不替换）
-  for (const skillPath of enabledSkillPaths) {
-    args.push('--append-system-prompt-file', skillPath);
+  if (appendSystemPrompt) {
+    sdkConfig.appendSystemPrompt = appendSystemPrompt;
   }
-
-  if (resumeSession && changeName) {
-    const sessionId = getSession(changeName, agentName);
+  if (effectiveTools.length > 0) {
+    sdkConfig.allowedTools = effectiveTools;
+  }
+  if (resumeSession && runId) {
+    const sessionId = getSession(runId, agentName);
     if (sessionId) {
-      args.push('--resume', sessionId);
+      sdkConfig.resume = sessionId;
     }
   }
 
-  const promptIndex = args.length;
-  args.push(prompt);
+  // Base64-encode the config for CLI arg
+  const configB64 = btoa(JSON.stringify(sdkConfig));
 
-  if (effectiveTools.length > 0) {
-    args.push('--allowedTools', ...effectiveTools);
-  }
+  // Resolve the SDK runner script path
+  const runnerScript = await resolveResource('scripts/sdk-runner.mjs');
 
-  onStatus?.(`[command] ${renderCommandPreview(args, promptIndex)}`);
-  if (shouldShowFullCommand()) {
-    onStatus?.(`[command:full] claude ${args.map(quoteCliArg).join(' ')}`);
-  }
+  onStatus?.(`[sdk] Starting agent "${agentName}" via Agent SDK`);
 
-  const cmd = Command.create('run-claude', args, { cwd });
+  const cmd = Command.create('run-sdk-runner', [runnerScript, configB64], { cwd });
   const startedAt = Date.now();
   let lastActivityAt = startedAt;
 
   cmd.stdout.on('data', (line: string) => {
     lastActivityAt = Date.now();
-    const event = parseStreamLine(line);
-    if (!event) {
-      // 非 JSON 行（如 claude 启动时的纯文本）直接作为 raw 事件透传
+    const message = parseStreamLine(line);
+    if (!message) {
       if (line.trim()) {
-        onEvent({ type: 'raw', text: line.trim() } as ClaudeStreamEvent);
+        onEvent({ type: 'raw', text: line.trim() } as SDKMessage);
       }
       return;
     }
 
-    const sid = extractSessionId(event);
-    if (sid && changeName) {
-      saveSession(changeName, agentName, sid);
+    const sid = extractSessionId(message);
+    if (sid && runId) {
+      saveSession(runId, agentName, sid);
     }
 
-    onEvent(event);
+    onEvent(message);
   });
 
   cmd.stderr.on('data', (line: string) => {
@@ -182,23 +146,22 @@ export async function runAgent(
     const text = line.trim();
     if (!text) return;
     if (isBenignStdinWarning(text)) {
-      onStatus?.(`⚠ ${text}`);
+      onStatus?.(`Warning: ${text}`);
       return;
     }
     onError?.(text);
   });
 
   const child = await cmd.spawn();
-  onStatus?.(`[spawn ok] pid=${child.pid}`);
+  onStatus?.(`[sdk] Spawned sdk-runner pid=${child.pid}`);
 
   const heartbeat = setInterval(() => {
     const now = Date.now();
     const idleSec = Math.floor((now - lastActivityAt) / 1000);
-    // 仅在一段时间无输出时提示，避免刷屏
     if (idleSec < 15) return;
     const elapsedSec = Math.floor((now - startedAt) / 1000);
     onStatus?.(
-      `⏳ 运行中... 已运行 ${elapsedSec}s，最近输出 ${idleSec}s 前 (pid=${child.pid})`
+      `Running... elapsed ${elapsedSec}s, last output ${idleSec}s ago (pid=${child.pid})`
     );
   }, 15000);
 
@@ -208,7 +171,11 @@ export async function runAgent(
   });
 
   return {
-    abort: () => child.kill(),
+    abort: () => {
+      // Send abort signal via stdin, then kill
+      child.write('__ABORT__\n').catch(() => {});
+      setTimeout(() => child.kill(), 1000);
+    },
     pid: child.pid,
   };
 }
@@ -224,11 +191,11 @@ export async function checkClaudeAvailable(): Promise<CheckResult> {
   try {
     logs.push('> Command.create("run-claude", ["--version"])');
     const cmd = Command.create('run-claude', ['--version']);
-    logs.push('  命令已创建，正在执行...');
+    logs.push('  Command created, executing...');
     const output = await cmd.execute();
     logs.push(`  exit code: ${output.code}`);
-    logs.push(`  stdout: ${output.stdout?.trim() || '(空)'}`);
-    logs.push(`  stderr: ${output.stderr?.trim() || '(空)'}`);
+    logs.push(`  stdout: ${output.stdout?.trim() || '(empty)'}`);
+    logs.push(`  stderr: ${output.stderr?.trim() || '(empty)'}`);
     return {
       ok: output.code === 0,
       version: output.stdout?.trim() || '',
@@ -236,7 +203,7 @@ export async function checkClaudeAvailable(): Promise<CheckResult> {
     };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    logs.push(`  异常: ${msg}`);
+    logs.push(`  Error: ${msg}`);
     return { ok: false, version: '', logs };
   }
 }

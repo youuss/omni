@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ClaudeStreamEvent } from '../types';
+import type { SDKMessage } from '../types';
 
 interface OutputLine {
   id: number;
@@ -10,10 +10,10 @@ interface OutputLine {
 
 interface OutputState {
   lines: OutputLine[];
-  rawEvents: ClaudeStreamEvent[];
+  rawEvents: SDKMessage[];
 
   appendLine: (type: OutputLine['type'], content: string) => void;
-  appendEvent: (event: ClaudeStreamEvent) => void;
+  appendEvent: (event: SDKMessage) => void;
   clear: () => void;
 }
 
@@ -23,38 +23,66 @@ function makeLine(type: OutputLine['type'], content: string): OutputLine {
   return { id: ++lineCounter, type, content, timestamp: Date.now() };
 }
 
-function extractLinesFromEvent(event: ClaudeStreamEvent): OutputLine[] {
-  switch (event.type) {
+function extractLinesFromMessage(msg: SDKMessage): OutputLine[] {
+  switch (msg.type) {
     case 'assistant': {
-      const contents = (event.message as { content?: Array<{ type: string; text?: string }> })
-        ?.content ?? [];
-      const lines = contents
-        .filter((b) => b.type === 'text' && b.text)
-        .map((b) => makeLine('text', b.text!));
-      // Fallback for flat text field
-      if (lines.length === 0 && event.text) {
-        return [makeLine('text', String(event.text))];
+      const content = (msg as { message?: { content?: Array<{ type: string; text?: string; name?: string; input?: unknown }> } })
+        .message?.content ?? [];
+
+      const lines: OutputLine[] = [];
+      for (const block of content) {
+        if (block.type === 'text' && block.text) {
+          lines.push(makeLine('text', block.text));
+        } else if (block.type === 'tool_use') {
+          lines.push(
+            makeLine('tool', `[${block.name}] ${JSON.stringify(block.input ?? '').slice(0, 200)}`)
+          );
+        }
       }
       return lines;
     }
-    case 'tool_use':
-      return [
-        makeLine(
-          'tool',
-          `[${event.tool_name}] ${JSON.stringify(event.tool_input ?? '').slice(0, 200)}`
-        ),
-      ];
-    case 'tool_result':
-      return [makeLine('tool', `→ ${String(event.result ?? '').slice(0, 500)}`)];
+
+    case 'user': {
+      const content = (msg as { message?: { content?: Array<{ type: string; content?: unknown }> } })
+        .message?.content ?? [];
+
+      const lines: OutputLine[] = [];
+      for (const block of content) {
+        if (block.type === 'tool_result' && block.content) {
+          const text = typeof block.content === 'string'
+            ? block.content
+            : JSON.stringify(block.content);
+          lines.push(makeLine('tool', `→ ${text.slice(0, 500)}`));
+        }
+      }
+      return lines;
+    }
+
     case 'result': {
-      if (event.error) return [makeLine('error', `result error: ${event.error}`)];
-      if (event.result) return [makeLine('text', String(event.result))];
+      const result = msg as { subtype?: string; result?: string; errors?: string[] };
+      if (result.subtype === 'success' && result.result) {
+        return [makeLine('text', String(result.result))];
+      }
+      if (result.errors?.length) {
+        return result.errors.map((e) => makeLine('error', e));
+      }
       return [];
     }
-    case 'raw':
-      return [makeLine('system', String(event.text ?? ''))];
-    default:
-      return [makeLine('system', `[${event.type}] ${JSON.stringify(event).slice(0, 300)}`)];
+
+    case 'system': {
+      const sys = msg as { subtype?: string; model?: string; tools?: string[] };
+      if (sys.subtype === 'init') {
+        return [makeLine('system', `Model: ${sys.model ?? 'unknown'}, Tools: ${sys.tools?.length ?? 0}`)];
+      }
+      return [];
+    }
+
+    default: {
+      // raw text or unknown types
+      const text = (msg as { text?: string }).text;
+      if (text) return [makeLine('system', text)];
+      return [];
+    }
   }
 }
 
@@ -69,7 +97,7 @@ export const useOutputStore = create<OutputState>((set) => ({
 
   appendEvent: (event) =>
     set((state) => ({
-      lines: [...state.lines, ...extractLinesFromEvent(event)],
+      lines: [...state.lines, ...extractLinesFromMessage(event)],
       rawEvents: [...state.rawEvents, event],
     })),
 

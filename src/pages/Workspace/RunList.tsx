@@ -13,47 +13,47 @@ import {
 } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import { Trash2 } from 'lucide-react';
-import * as specService from '../../services/spec';
-import type { ChangeInfo } from '../../types';
+import * as runService from '../../services/run-service';
+import type { RunInfo } from '../../types/run';
 
-interface ChangeListProps {
-  changes: ChangeInfo[];
-  currentChangeName: string | null;
+interface RunListProps {
+  runs: RunInfo[];
+  currentRunId: string | null;
   projectPath: string;
-  onSelect: (name: string) => void;
-  onDeleted: (name: string) => void;
+  onSelect: (id: string) => void;
+  onDeleted: (id: string) => void;
 }
 
-export default function ChangeList({
-  changes,
-  currentChangeName,
+export default function RunList({
+  runs,
+  currentRunId,
   projectPath,
   onSelect,
   onDeleted,
-}: ChangeListProps) {
+}: RunListProps) {
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
-          活跃变更
+          Active Runs
         </p>
         <span className="text-[10px] text-muted-foreground">
-          {changes.length}
+          {runs.length}
         </span>
       </div>
-      {changes.length === 0 ? (
+      {runs.length === 0 ? (
         <p className="text-xs text-muted-foreground text-center py-6">
-          暂无活跃变更
+          No active runs
         </p>
       ) : (
         <div className="space-y-1">
-          {changes.map((change) => (
+          {runs.map((run) => (
             <div
-              key={change.name}
-              onClick={() => onSelect(change.name)}
+              key={run.id}
+              onClick={() => onSelect(run.id)}
               className={cn(
-                'group/change flex items-center justify-between gap-1 w-full rounded-lg px-3 py-2.5 text-left transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/30',
-                currentChangeName === change.name
+                'group/run flex items-center justify-between gap-1 w-full rounded-lg px-3 py-2.5 text-left transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/30',
+                currentRunId === run.id
                   ? 'bg-accent border border-primary/20'
                   : 'hover:bg-accent/50'
               )}
@@ -62,21 +62,22 @@ export default function ChangeList({
                 <span
                   className={cn(
                     'text-xs truncate',
-                    currentChangeName === change.name && 'font-semibold'
+                    currentRunId === run.id && 'font-semibold'
                   )}
                 >
-                  {change.name}
+                  {run.id}
                 </span>
-                {(change.has_requirements || change.has_dev_plan || change.has_verification) && (
+                {(run.inputFiles.length > 0 || run.outputFiles.length > 0) && (
                   <div className="flex gap-1 flex-wrap mt-1.5">
-                    {change.has_requirements && (
-                      <Badge variant="secondary" className="text-[9px] h-4 px-1.5">需求</Badge>
+                    {run.inputFiles.length > 0 && (
+                      <Badge variant="secondary" className="text-[9px] h-4 px-1.5">
+                        {run.inputFiles.length} inputs
+                      </Badge>
                     )}
-                    {change.has_dev_plan && (
-                      <Badge variant="default" className="text-[9px] h-4 px-1.5">规划</Badge>
-                    )}
-                    {change.has_verification && (
-                      <Badge variant="outline" className="text-[9px] h-4 px-1.5 text-green-600 border-green-300">验证</Badge>
+                    {run.outputFiles.length > 0 && (
+                      <Badge variant="outline" className="text-[9px] h-4 px-1.5 text-green-600 border-green-300">
+                        {run.outputFiles.length} outputs
+                      </Badge>
                     )}
                   </div>
                 )}
@@ -85,7 +86,7 @@ export default function ChangeList({
                 <AlertDialogTrigger
                   onClick={(e) => e.stopPropagation()}
                   render={
-                    <button className="p-1 rounded opacity-0 group-hover/change:opacity-100 group-focus-within/change:opacity-100 hover:bg-destructive/10 transition-all shrink-0 cursor-pointer" />
+                    <button className="p-1 rounded opacity-0 group-hover/run:opacity-100 group-focus-within/run:opacity-100 hover:bg-destructive/10 transition-all shrink-0 cursor-pointer" />
                   }
                 >
                   <Trash2 className="w-3 h-3 text-muted-foreground hover:text-destructive" />
@@ -93,30 +94,27 @@ export default function ChangeList({
                 <AlertDialogContent onClick={(e) => e.stopPropagation()}>
                   <AlertDialogHeader>
                     <AlertDialogTitle>
-                      删除变更 "{change.name}"？
+                      Delete run "{run.id}"?
                     </AlertDialogTitle>
                     <AlertDialogDescription>
-                      将永久删除该变更的所有文件（需求、规划、验证报告等），此操作不可撤销。
+                      This will permanently delete all files (inputs, outputs, metadata). This action cannot be undone.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
-                    <AlertDialogCancel>取消</AlertDialogCancel>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
                     <AlertDialogAction
                       className="bg-destructive hover:bg-destructive/90"
                       onClick={async () => {
                         try {
-                          await specService.deleteChange(
-                            projectPath,
-                            change.name
-                          );
-                          toast.success(`变更 "${change.name}" 已删除`);
-                          onDeleted(change.name);
+                          await runService.deleteRun(projectPath, run.id);
+                          toast.success(`Run "${run.id}" deleted`);
+                          onDeleted(run.id);
                         } catch (e) {
-                          toast.error(`删除失败: ${e}`);
+                          toast.error(`Delete failed: ${e}`);
                         }
                       }}
                     >
-                      删除
+                      Delete
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>

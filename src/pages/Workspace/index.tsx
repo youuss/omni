@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Empty } from '@/components/ui/empty';
+import { Button } from '@/components/ui/button';
 import {
   Tooltip,
   TooltipTrigger,
@@ -9,330 +10,389 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import {
-  FileText,
   Bot,
-  Zap,
+  Sparkles,
   Settings,
   Code2,
-  ClipboardCheck,
   Archive,
   Layers,
   ChevronUp,
   ChevronDown,
   Terminal,
+  Globe,
+  Plus,
+  FileText,
+  X,
 } from 'lucide-react';
 import { useProjectStore } from '../../stores/projectStore';
-import { useWorkflowStore } from '../../stores/workflowStore';
+import { useRunStore } from '../../stores/runStore';
 import { useOutputStore } from '../../stores/outputStore';
-import { usePipelineStore } from '../../stores/pipelineStore';
+import { useHarnessStore } from '../../stores/harnessStore';
 import { ensureAgentConfigs } from '../../services/claude/agent-config-service';
-import * as specService from '../../services/spec';
-import { useChangeFiles } from './useChangeFiles';
-import { usePipelineRunner } from './usePipelineRunner';
-import PipelineBoard from './PipelineBoard';
+import * as runService from '../../services/run-service';
+import { useRunFiles } from './useRunFiles';
+import { useHarnessRunner } from './useHarnessRunner';
 import WorkspaceHeader from './WorkspaceHeader';
-import ContentTabs from './ContentTabs';
+import HarnessCanvas from './HarnessCanvas';
+import CanvasToolbar from './CanvasToolbar';
 import OutputStream from './OutputStream';
-import { CreateChangeDialog } from './WorkspaceDialogs';
-import PipelineCanvas from './PipelineCanvas';
+import { CreateRunDialog } from './WorkspaceDialogs';
+import AgentPalette from './AgentPalette';
+import NodeDetailPanel from './NodeDetailPanel';
 import WorkspaceDrawer, { type DrawerPanel } from './WorkspaceDrawer';
 
-type MainView = 'content' | 'pipeline';
-
-const RIGHT_ICONS: { icon: React.ElementType; label: string; key: DrawerPanel }[] = [
-  { icon: Layers, label: '变更', key: 'changes' },
+const SIDEBAR_ICONS: { icon: React.ElementType; label: string; key: DrawerPanel }[] = [
+  { icon: Layers, label: 'Runs', key: 'runs' },
   { icon: Bot, label: 'Agents', key: 'agents' },
-  { icon: Zap, label: 'Skills', key: 'skills' },
-  { icon: Settings, label: '设置', key: 'settings' },
-  { icon: Code2, label: '代码', key: 'codebase' },
-  { icon: ClipboardCheck, label: '规格', key: 'specs' },
-  { icon: Archive, label: '归档', key: 'archive' },
+  { icon: Sparkles, label: 'Skills', key: 'skills' },
+  { icon: Settings, label: 'Settings', key: 'settings' },
+  { icon: Code2, label: 'Codebase', key: 'codebase' },
+  { icon: Globe, label: 'Domains', key: 'domains' },
+  { icon: Archive, label: 'Archive', key: 'archive' },
 ];
 
 export default function WorkspacePage() {
   const params = useParams();
   const projectPath = decodeURIComponent(params.projectPath ?? '');
 
-  const { currentProject, openProject, changes, loadChanges } = useProjectStore();
+  const { currentProject, openProject, runs, loadRuns } = useProjectStore();
   const {
-    changeName, isRunning,
-    startChange, reset: resetWorkflow,
-  } = useWorkflowStore();
+    currentRunId, isRunning,
+    startRun, reset: resetRun,
+  } = useRunStore();
   const { clear: clearOutput, lines } = useOutputStore();
   const {
-    loadPipeline, loadTemplates, pipelineRunning, currentPipeline,
-    tabs, recomputeTabs, templates,
-  } = usePipelineStore();
+    loadHarness, loadTemplates, harnessRunning, currentHarness,
+    tabs, recomputeTabs, templates, agents, selectedNodeId, selectNode,
+  } = useHarnessStore();
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<string>('');
   const [drawerPanel, setDrawerPanel] = useState<DrawerPanel | null>(null);
-  const [mainView, setMainView] = useState<MainView>('content');
+  const [showPalette, setShowPalette] = useState(true);
+  const [showNodeDetail, setShowNodeDetail] = useState(false);
   const [outputOpen, setOutputOpen] = useState(false);
-  const [outputHeight, setOutputHeight] = useState(240);
+  const [outputHeight, setOutputHeight] = useState(200);
 
-  const changeFiles = useChangeFiles(currentProject?.path, tabs);
+  const runFiles = useRunFiles(currentProject?.path, tabs);
 
-  const pipeline = usePipelineRunner({
+  const harness = useHarnessRunner({
     projectPath: currentProject?.path,
-    changeName,
-    onFilesChanged: changeFiles.loadFiles,
-    onChangesChanged: loadChanges,
+    runId: currentRunId,
+    onFilesChanged: runFiles.loadFiles,
+    onRunsChanged: loadRuns,
   });
 
-  const anyRunning = isRunning || pipelineRunning;
+  const anyRunning = isRunning || harnessRunning;
 
   useEffect(() => {
     if (anyRunning && !outputOpen) setOutputOpen(true);
   }, [anyRunning]);
 
-  // Reset workflow on mount (clear stale changeName from previous session)
   useEffect(() => {
-    resetWorkflow();
+    resetRun();
     clearOutput();
-    setMainView('content');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (projectPath && projectPath !== currentProject?.path) {
-      resetWorkflow();
+      resetRun();
       clearOutput();
-      setMainView('content');
       openProject(projectPath);
     }
-  }, [projectPath, currentProject?.path, openProject, resetWorkflow, clearOutput]);
+  }, [projectPath, currentProject?.path, openProject, resetRun, clearOutput]);
 
   useEffect(() => {
     if (currentProject?.path) {
       ensureAgentConfigs(currentProject.path).catch((e: unknown) => {
-        toast.error(`Agent 配置初始化失败: ${e}`);
+        toast.error(`Agent config init failed: ${e}`);
       });
-      loadPipeline(currentProject.path).catch((e: unknown) => {
-        toast.error(`Pipeline 加载失败: ${e}`);
+      loadHarness(currentProject.path).catch((e: unknown) => {
+        toast.error(`Harness load failed: ${e}`);
       });
       loadTemplates(currentProject.path).catch(() => {});
     }
   }, [currentProject?.path]);
 
-  useEffect(() => { pipeline.checkClaude(); }, [pipeline.checkClaude]);
+  useEffect(() => { harness.checkClaude(); }, [harness.checkClaude]);
 
   useEffect(() => {
-    if (changeName) {
-      recomputeTabs(changeName);
+    if (currentRunId) {
+      recomputeTabs(currentRunId);
     }
-  }, [changeName, currentPipeline, recomputeTabs]);
+  }, [currentRunId, currentHarness, recomputeTabs]);
 
+  // When a node is selected, show its detail panel
   useEffect(() => {
-    if (tabs.length > 0 && (!activeTab || !tabs.some((t) => t.id === activeTab))) {
-      setActiveTab(tabs[0].id);
+    if (selectedNodeId) {
+      setShowNodeDetail(true);
+    } else {
+      setShowNodeDetail(false);
     }
-  }, [tabs, activeTab]);
+  }, [selectedNodeId]);
 
-  const handleSelectChange = useCallback(
-    async (name: string) => {
+  const handleNodeClick = useCallback(() => {
+    setShowNodeDetail(true);
+  }, []);
+
+  const handlePaneClick = useCallback(() => {
+    selectNode(null);
+    setShowNodeDetail(false);
+  }, [selectNode]);
+
+  const handleSelectRun = useCallback(
+    async (runId: string) => {
       if (!currentProject) return;
-      startChange(name);
+      startRun(runId);
       clearOutput();
-      setMainView('content');
-      // Load pipeline bound to this change
-      const meta = await specService.readChangeMeta(currentProject.path, name);
-      await loadPipeline(currentProject.path, meta?.pipelineId);
-      recomputeTabs(name);
-      await changeFiles.loadFiles(name);
+      const meta = await runService.readRunMeta(currentProject.path, runId);
+      await loadHarness(currentProject.path, meta?.harnessId);
+      recomputeTabs(runId);
+      await runFiles.loadFiles(runId);
     },
-    [currentProject, startChange, clearOutput, loadPipeline, changeFiles.loadFiles, recomputeTabs]
+    [currentProject, startRun, clearOutput, loadHarness, runFiles.loadFiles, recomputeTabs]
   );
 
-  const handleCreateChange = useCallback(
-    async (name: string, reqDraft: string, pipelineId: string) => {
+  const handleCreateRun = useCallback(
+    async (runId: string, reqDraft: string, harnessId: string) => {
       if (!currentProject) return;
       try {
-        await specService.createChange(currentProject.path, name);
-        // Save pipeline binding
-        await specService.writeChangeMeta(currentProject.path, name, { pipelineId });
+        await runService.createRun(currentProject.path, runId);
+        await runService.writeRunMeta(currentProject.path, runId, { harnessId });
         if (reqDraft.trim()) {
-          await specService.writeChangeFile(currentProject.path, name, 'requirements.md', reqDraft.trim());
+          await runService.writeRunFile(currentProject.path, runId, 'inputs/requirements.md', reqDraft.trim());
         }
-        // Refresh change list first so the new change is recognised
-        await loadChanges();
-        // Now select the new change
-        startChange(name);
-        setMainView('content');
-        // Load the selected pipeline template
-        await loadPipeline(currentProject.path, pipelineId);
-        recomputeTabs(name);
-        await changeFiles.loadFiles(name);
-        toast.success('变更已创建');
-      } catch (e) { toast.error(`创建失败: ${e}`); }
+        await loadRuns();
+        startRun(runId);
+        await loadHarness(currentProject.path, harnessId);
+        recomputeTabs(runId);
+        await runFiles.loadFiles(runId);
+        toast.success('Run created');
+      } catch (e) { toast.error(`Create failed: ${e}`); }
     },
-    [currentProject, startChange, loadPipeline, recomputeTabs, changeFiles.loadFiles, loadChanges]
+    [currentProject, startRun, loadHarness, recomputeTabs, runFiles.loadFiles, loadRuns]
   );
 
-  const handleDeletedChange = useCallback(
-    async (deletedName: string) => {
-      if (changeName === deletedName) resetWorkflow();
-      await loadChanges();
+  const handleDeletedRun = useCallback(
+    async (deletedId: string) => {
+      if (currentRunId === deletedId) resetRun();
+      await loadRuns();
     },
-    [changeName, resetWorkflow, loadChanges]
+    [currentRunId, resetRun, loadRuns]
   );
 
   const handleArchive = useCallback(async () => {
-    if (!currentProject || !changeName) return;
+    if (!currentProject || !currentRunId) return;
     try {
-      await specService.archiveChange(currentProject.path, changeName);
-      resetWorkflow();
-      changeFiles.clearFiles();
-      await loadChanges();
-      toast.success('已归档');
-    } catch (e) { toast.error(`归档失败: ${e}`); }
-  }, [currentProject, changeName, resetWorkflow, changeFiles.clearFiles, loadChanges]);
+      await runService.archiveRun(currentProject.path, currentRunId);
+      resetRun();
+      runFiles.clearFiles();
+      await loadRuns();
+      toast.success('Archived');
+    } catch (e) { toast.error(`Archive failed: ${e}`); }
+  }, [currentProject, currentRunId, resetRun, runFiles.clearFiles, loadRuns]);
 
   const handleAbort = useCallback(() => {
-    pipeline.abort();
-  }, [pipeline]);
-
-  const handleOpenPipeline = useCallback(() => {
-    setMainView('pipeline');
-  }, []);
+    harness.abort();
+  }, [harness]);
 
   const toggleDrawer = (panel: DrawerPanel) => {
     setDrawerPanel((prev) => (prev === panel ? null : panel));
   };
 
+  // Selected agent for node detail
+  const selectedAgent = useMemo(() => {
+    if (!selectedNodeId || !currentHarness) return undefined;
+    const node = currentHarness.nodes.find((n) => n.id === selectedNodeId);
+    if (!node) return undefined;
+    return agents.find((a) => a.id === node.agentId);
+  }, [selectedNodeId, currentHarness, agents]);
+
   if (!currentProject) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Empty description="请先选择一个项目" />
+        <Empty description="Select a project first" />
       </div>
     );
   }
 
-  const pipelineReady = !!currentPipeline && currentPipeline.nodes.length > 0 && !!changeName;
+  const harnessReady = !!currentHarness && currentHarness.nodes.length > 0 && !!currentRunId;
 
   return (
     <div className="flex h-full">
+      {/* Main Area */}
       <div className="flex flex-col flex-1 min-w-0">
         <WorkspaceHeader
           project={currentProject}
-          changeName={changeName}
-          claudeAvailable={pipeline.claudeAvailable}
-          changes={changes}
+          runId={currentRunId}
+          claudeAvailable={harness.claudeAvailable}
+          runs={runs}
           isRunning={anyRunning}
-          pipelineReady={pipelineReady}
-          onSelectChange={handleSelectChange}
-          onCreateChange={() => setCreateModalOpen(true)}
-          onRunPipeline={pipeline.runPipeline}
+          harnessReady={harnessReady}
+          onSelectRun={handleSelectRun}
+          onCreateRun={() => setCreateModalOpen(true)}
+          onRunHarness={harness.runHarness}
           onAbort={handleAbort}
           onArchive={handleArchive}
         />
 
-        {mainView === 'pipeline' ? (
-          /* Pipeline Canvas — independent of changeName */
-          <div className="flex-1 min-h-0">
-            <PipelineCanvas
+        {/* Canvas Area */}
+        <div className="flex-1 min-h-0 relative">
+          {/* Canvas is always rendered */}
+          <HarnessCanvas
+            onNodeClick={handleNodeClick}
+            onPaneClick={handlePaneClick}
+          />
+
+          {/* Floating toolbar on canvas - only when run is active */}
+          {currentRunId && (
+            <CanvasToolbar
               projectPath={currentProject.path}
               isRunning={anyRunning}
-              onRunPipeline={pipeline.runPipeline}
+              harnessReady={harnessReady}
+              onRunHarness={harness.runHarness}
               onAbort={handleAbort}
-              onBack={() => setMainView('content')}
             />
-          </div>
-        ) : changeName ? (
-          <div className="flex flex-col flex-1 min-h-0">
-            <div className="px-5 pt-4 pb-2 shrink-0">
-              <PipelineBoard onOpenPipeline={handleOpenPipeline} />
-            </div>
+          )}
 
-            <div className="flex-1 min-h-0 px-5 pb-3">
-              <ContentTabs
-                activeTab={activeTab}
-                onTabChange={setActiveTab}
-                tabs={tabs}
-                documents={changeFiles.documents}
-                editingTabId={changeFiles.editingTabId}
-                isRunning={anyRunning}
-                onEditingChange={changeFiles.setEditingTabId}
-                onDocumentChange={changeFiles.updateDocument}
-                onSaveDocument={(tabId) => changeFiles.saveDocument(tabId)}
-                onRunPipeline={pipeline.runPipeline}
-              />
+          {/* Floating Agent Palette - right side of canvas */}
+          {showPalette && (
+            <div className="absolute top-3 right-3 bottom-3 w-[240px] z-10 flex flex-col rounded-xl bg-white/85 backdrop-blur-md border border-border/40 shadow-[0_4px_24px_oklch(0_0_0/0.08)] overflow-hidden">
+              <div className="flex items-center justify-between px-3 h-9 border-b border-border/30 shrink-0">
+                <span className="text-[11px] font-medium text-foreground/70">Agents</span>
+                <button
+                  onClick={() => setShowPalette(false)}
+                  className="p-0.5 rounded text-muted-foreground/40 hover:text-foreground hover:bg-black/5 transition-colors cursor-pointer"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+              <div className="flex-1 min-h-0">
+                <AgentPalette agents={agents} />
+              </div>
             </div>
+          )}
 
-            {/* Bottom Output Panel */}
-            <div
-              className={cn(
-                'shrink-0 border-t border-border/40 transition-all duration-250 ease-in-out overflow-hidden',
-                !outputOpen && 'h-0 border-t-0'
-              )}
-              style={{ height: outputOpen ? outputHeight : 0 }}
-            >
-              <OutputStream />
+          {/* Floating Node Detail Panel */}
+          {showNodeDetail && selectedNodeId && (
+            <div className="absolute top-3 right-3 bottom-3 w-[300px] z-10 flex flex-col rounded-xl bg-white/90 backdrop-blur-md border border-border/40 shadow-[0_4px_24px_oklch(0_0_0/0.08)] overflow-hidden">
+              <div className="flex items-center justify-between px-3 h-9 border-b border-border/30 shrink-0">
+                <span className="text-[11px] font-medium text-foreground/70">Node Detail</span>
+                <button
+                  onClick={() => { selectNode(null); setShowNodeDetail(false); }}
+                  className="p-0.5 rounded text-muted-foreground/40 hover:text-foreground hover:bg-black/5 transition-colors cursor-pointer"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+              <div className="flex-1 min-h-0">
+                <NodeDetailPanel
+                  nodeId={selectedNodeId}
+                  agent={selectedAgent}
+                  tabs={tabs}
+                  documents={runFiles.documents}
+                  editingTabId={runFiles.editingTabId}
+                  isRunning={anyRunning}
+                  onEditingChange={runFiles.setEditingTabId}
+                  onDocumentChange={runFiles.updateDocument}
+                  onSaveDocument={(tabId) => runFiles.saveDocument(tabId)}
+                />
+              </div>
             </div>
+          )}
 
-            {/* Output Toggle Bar */}
-            <div className="shrink-0 flex items-center gap-2 px-5 h-8 border-t border-border/30 glass-subtle">
+          {/* No Run Overlay */}
+          {!currentRunId && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/60 backdrop-blur-[2px] pointer-events-none">
+              <div className="flex flex-col items-center text-center px-8 pointer-events-auto">
+                <div className="w-16 h-16 rounded-2xl bg-white/60 backdrop-blur-sm border border-border/30 flex items-center justify-center mb-5 shadow-sm">
+                  <FileText className="w-7 h-7 text-muted-foreground/30" />
+                </div>
+                <p className="text-sm font-medium text-foreground/70 mb-1.5">No active run</p>
+                <p className="text-xs text-muted-foreground/60 mb-5 max-w-[280px]">
+                  Create a run to start executing the harness. You can design the harness topology in the background.
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={() => setCreateModalOpen(true)}
+                    className="gap-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    New Run
+                  </Button>
+                  {runs.length > 0 && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setDrawerPanel('runs')}
+                      className="gap-1.5 cursor-pointer"
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      Select Run
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom Output Panel */}
+        <div
+          className={cn(
+            'shrink-0 border-t border-border/40 transition-all duration-250 ease-in-out overflow-hidden',
+            !outputOpen && 'h-0 border-t-0'
+          )}
+          style={{ height: outputOpen ? outputHeight : 0 }}
+        >
+          <OutputStream />
+        </div>
+
+        {/* Output Toggle Bar */}
+        <div className="shrink-0 flex items-center gap-2 px-5 h-8 border-t border-border/30 glass-subtle">
+          <button
+            onClick={() => setOutputOpen(!outputOpen)}
+            className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          >
+            <Terminal className="w-3 h-3" />
+            <span>Output</span>
+            {lines.length > 0 && (
+              <span className="text-[9px] bg-primary/10 text-primary px-1.5 rounded-full">
+                {lines.length}
+              </span>
+            )}
+            {outputOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+          </button>
+          {anyRunning && (
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+              <span className="text-[10px] text-muted-foreground">Running</span>
+            </div>
+          )}
+          {outputOpen && (
+            <div className="ml-auto flex items-center gap-1">
               <button
-                onClick={() => setOutputOpen(!outputOpen)}
-                className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                onClick={() => setOutputHeight(Math.min(outputHeight + 80, 500))}
+                className="p-0.5 rounded text-muted-foreground/40 hover:text-foreground hover:bg-white/40 transition-colors cursor-pointer"
+                title="Expand"
               >
-                <Terminal className="w-3 h-3" />
-                <span>Claude 输出</span>
-                {lines.length > 0 && (
-                  <span className="text-[9px] bg-primary/10 text-primary px-1.5 rounded-full">
-                    {lines.length}
-                  </span>
-                )}
-                {outputOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+                <ChevronUp className="w-3 h-3" />
               </button>
-              {anyRunning && (
-                <div className="flex items-center gap-1.5">
-                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                  <span className="text-[10px] text-muted-foreground">运行中</span>
-                </div>
-              )}
-              {outputOpen && (
-                <div className="ml-auto flex items-center gap-1">
-                  <button
-                    onClick={() => setOutputHeight(Math.min(outputHeight + 80, 500))}
-                    className="p-0.5 rounded text-muted-foreground/40 hover:text-foreground hover:bg-white/40 transition-colors cursor-pointer"
-                    title="增大"
-                  >
-                    <ChevronUp className="w-3 h-3" />
-                  </button>
-                  <button
-                    onClick={() => setOutputHeight(Math.max(outputHeight - 80, 120))}
-                    className="p-0.5 rounded text-muted-foreground/40 hover:text-foreground hover:bg-white/40 transition-colors cursor-pointer"
-                    title="缩小"
-                  >
-                    <ChevronDown className="w-3 h-3" />
-                  </button>
-                </div>
-              )}
+              <button
+                onClick={() => setOutputHeight(Math.max(outputHeight - 80, 120))}
+                className="p-0.5 rounded text-muted-foreground/40 hover:text-foreground hover:bg-white/40 transition-colors cursor-pointer"
+                title="Shrink"
+              >
+                <ChevronDown className="w-3 h-3" />
+              </button>
             </div>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center flex-1 text-center px-8">
-            <div className="w-16 h-16 rounded-2xl bg-white/40 backdrop-blur-sm border border-border/30 flex items-center justify-center mb-5">
-              <FileText className="w-7 h-7 text-muted-foreground/30" />
-            </div>
-            <p className="text-sm font-medium text-foreground/70 mb-1.5">暂无选中变更</p>
-            <p className="text-xs text-muted-foreground/60 mb-4">从右侧面板选择变更，或新建变更开始工作</p>
-            <button
-              onClick={() => setCreateModalOpen(true)}
-              className="text-xs text-primary hover:text-primary/80 font-medium transition-colors cursor-pointer"
-            >
-              + 新建变更
-            </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Right Icon Sidebar */}
       <aside className="w-11 shrink-0 border-l border-border/40 glass flex flex-col items-center py-2 gap-0.5">
-        {RIGHT_ICONS.map(({ icon: Icon, label, key }) => {
+        {SIDEBAR_ICONS.map(({ icon: Icon, label, key }) => {
           const isActive = drawerPanel === key;
-          const hasIndicator = key === 'changes' && changes.length > 0;
+          const hasIndicator = key === 'runs' && runs.length > 0;
           return (
             <Tooltip key={key}>
               <TooltipTrigger
@@ -359,20 +419,21 @@ export default function WorkspacePage() {
         })}
       </aside>
 
+      {/* Drawer for runs/extensions/settings/codebase/domains/archive */}
       <WorkspaceDrawer
         activePanel={drawerPanel}
         onClose={() => setDrawerPanel(null)}
         projectPath={currentProject.path}
-        changes={changes}
-        currentChangeName={changeName}
-        onSelectChange={handleSelectChange}
-        onDeletedChange={handleDeletedChange}
+        runs={runs}
+        currentRunId={currentRunId}
+        onSelectRun={handleSelectRun}
+        onDeletedRun={handleDeletedRun}
       />
 
-      <CreateChangeDialog
+      <CreateRunDialog
         open={createModalOpen}
         onOpenChange={setCreateModalOpen}
-        onCreate={handleCreateChange}
+        onCreate={handleCreateRun}
         templates={templates}
       />
     </div>

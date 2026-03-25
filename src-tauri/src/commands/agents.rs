@@ -61,14 +61,14 @@ pub fn get_default_agent_prompt(name: String) -> Result<String, String> {
         "Implementer" => Ok(IMPLEMENTER_MD.to_string()),
         "Verifier" => Ok(VERIFIER_MD.to_string()),
         "Analyzer" => Ok(ANALYZER_MD.to_string()),
-        _ => Err(format!("未知 agent: {}", name)),
+        _ => Err(format!("Unknown agent: {}", name)),
     }
 }
 
 #[tauri::command]
 pub fn scan_agents(project_path: String) -> Result<Vec<AgentInfo>, String> {
     let agents_dir = Path::new(&project_path).join(".claude").join("agents");
-    let config_dir = Path::new(&project_path).join(".omni").join("agents");
+    let config_dir = Path::new(&project_path).join(".harness").join("agents");
 
     if !agents_dir.exists() {
         return Ok(vec![]);
@@ -80,7 +80,6 @@ pub fn scan_agents(project_path: String) -> Result<Vec<AgentInfo>, String> {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
 
-        // 只处理 .md 文件
         if path.extension().and_then(|e| e.to_str()) != Some("md") {
             continue;
         }
@@ -145,7 +144,6 @@ pub fn write_agent_file(
 
 #[tauri::command]
 pub fn delete_agent(project_path: String, agent_id: String) -> Result<(), String> {
-    // 删除 prompt 文件
     let prompt_file = Path::new(&project_path)
         .join(".claude")
         .join("agents")
@@ -154,9 +152,8 @@ pub fn delete_agent(project_path: String, agent_id: String) -> Result<(), String
         fs::remove_file(&prompt_file).map_err(|e| e.to_string())?;
     }
 
-    // 删除 config 文件
     let config_file = Path::new(&project_path)
-        .join(".omni")
+        .join(".harness")
         .join("agents")
         .join(format!("{}.json", &agent_id));
     if config_file.exists() {

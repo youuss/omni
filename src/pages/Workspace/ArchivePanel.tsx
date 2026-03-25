@@ -9,9 +9,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Empty } from '@/components/ui/empty';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import * as specService from '../../services/spec';
+import * as runService from '../../services/run-service';
 import MarkdownRenderer from '../../components/MarkdownRenderer';
-import type { ArchiveInfo } from '../../types';
+import type { ArchiveInfo } from '../../types/run';
 import { History, FolderOpen } from 'lucide-react';
 
 interface Props {
@@ -20,15 +20,13 @@ interface Props {
 
 export default function ArchivePanel({ projectPath }: Props) {
   const [archives, setArchives] = useState<ArchiveInfo[]>([]);
-  const [selectedArchive, setSelectedArchive] = useState<ArchiveInfo | null>(
-    null
-  );
+  const [selectedArchive, setSelectedArchive] = useState<ArchiveInfo | null>(null);
   const [fileContents, setFileContents] = useState<Record<string, string>>({});
   const [detailOpen, setDetailOpen] = useState(false);
 
   const loadArchives = async () => {
     try {
-      const list = await specService.listArchivedChanges(projectPath);
+      const list = await runService.listArchivedRuns(projectPath);
       setArchives(list);
     } catch {
       setArchives([]);
@@ -48,13 +46,25 @@ export default function ArchivePanel({ projectPath }: Props) {
     await Promise.all(
       mdFiles.map(async (file) => {
         try {
-          contents[file] = await specService.readArchiveFile(
-            projectPath,
-            archive.name,
-            file
-          );
+          // Try reading from inputs/ and outputs/ subdirectories
+          for (const sub of ['inputs', 'outputs', '']) {
+            try {
+              const subpath = sub ? `${sub}/${file}` : file;
+              contents[file] = await runService.readArchiveFile(
+                projectPath,
+                archive.id,
+                subpath
+              );
+              break;
+            } catch {
+              continue;
+            }
+          }
+          if (!contents[file]) {
+            contents[file] = '(Unable to read)';
+          }
         } catch {
-          contents[file] = '（无法读取）';
+          contents[file] = '(Unable to read)';
         }
       })
     );
@@ -69,23 +79,23 @@ export default function ArchivePanel({ projectPath }: Props) {
         <div className="flex items-center gap-2 mb-3">
           <History className="w-3.5 h-3.5 text-muted-foreground" />
           <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
-            历史归档
+            Archive
           </p>
         </div>
         {archives.length === 0 ? (
-          <Empty description="暂无归档记录" className="py-6" />
+          <Empty description="No archived runs" className="py-6" />
         ) : (
           <div className="space-y-0.5">
             {archives.map((archive) => (
               <button
-                key={archive.name}
+                key={archive.id}
                 onClick={() => handleViewArchive(archive)}
                 className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-xs hover:bg-accent/50 transition-colors text-left"
               >
                 <FolderOpen className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
                 <div className="min-w-0 flex-1">
                   <div className="text-xs truncate font-medium">
-                    {archive.original_name}
+                    {archive.originalRunId}
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
                     {archive.date && (
@@ -97,7 +107,7 @@ export default function ArchivePanel({ projectPath }: Props) {
                       </Badge>
                     )}
                     <span className="text-[10px] text-muted-foreground">
-                      {archive.files.length} 个文件
+                      {archive.files.length} files
                     </span>
                   </div>
                 </div>
@@ -112,7 +122,7 @@ export default function ArchivePanel({ projectPath }: Props) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <History className="w-4 h-4" />
-              归档详情: {selectedArchive?.original_name}
+              Archive: {selectedArchive?.originalRunId}
               {selectedArchive?.date && (
                 <Badge variant="secondary" className="text-[10px]">
                   {selectedArchive.date}
@@ -138,7 +148,7 @@ export default function ArchivePanel({ projectPath }: Props) {
               ))}
             </Tabs>
           ) : (
-            <Empty description="无 Markdown 文件" />
+            <Empty description="No markdown files" />
           )}
         </DialogContent>
       </Dialog>

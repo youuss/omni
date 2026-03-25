@@ -3,14 +3,13 @@ use std::fs;
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SkillInfo {
+pub struct ToolExtensionInfo {
     pub id: String,
     pub path: String,
     pub name: String,
     pub description: String,
 }
 
-/// 从 SKILL.md 的 YAML front matter 提取 name / description
 fn parse_front_matter(content: &str) -> (String, String) {
     let mut name = String::new();
     let mut description = String::new();
@@ -38,16 +37,16 @@ fn parse_front_matter(content: &str) -> (String, String) {
 }
 
 #[tauri::command]
-pub fn scan_skills(project_path: String) -> Result<Vec<SkillInfo>, String> {
-    let skills_dir = Path::new(&project_path).join(".claude").join("skills");
+pub fn scan_extensions(project_path: String) -> Result<Vec<ToolExtensionInfo>, String> {
+    let ext_dir = Path::new(&project_path).join(".claude").join("skills");
 
-    if !skills_dir.exists() {
+    if !ext_dir.exists() {
         return Ok(vec![]);
     }
 
-    let mut skills = Vec::new();
+    let mut extensions = Vec::new();
 
-    for entry in fs::read_dir(&skills_dir).map_err(|e| e.to_string())? {
+    for entry in fs::read_dir(&ext_dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
 
@@ -61,7 +60,7 @@ pub fn scan_skills(project_path: String) -> Result<Vec<SkillInfo>, String> {
         }
 
         let id = entry.file_name().to_string_lossy().into_owned();
-        let skill_path = skill_file.to_string_lossy().into_owned();
+        let ext_path = skill_file.to_string_lossy().into_owned();
 
         let (parsed_name, description) = fs::read_to_string(&skill_file)
             .map(|content| parse_front_matter(&content))
@@ -69,31 +68,31 @@ pub fn scan_skills(project_path: String) -> Result<Vec<SkillInfo>, String> {
 
         let name = if parsed_name.is_empty() { id.clone() } else { parsed_name };
 
-        skills.push(SkillInfo { id, path: skill_path, name, description });
+        extensions.push(ToolExtensionInfo { id, path: ext_path, name, description });
     }
 
-    skills.sort_by(|a, b| a.id.cmp(&b.id));
-    Ok(skills)
+    extensions.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(extensions)
 }
 
 #[tauri::command]
-pub fn write_skill_file(project_path: String, skill_id: String, content: String) -> Result<(), String> {
-    let skill_dir = Path::new(&project_path)
+pub fn write_extension_file(project_path: String, extension_id: String, content: String) -> Result<(), String> {
+    let ext_dir = Path::new(&project_path)
         .join(".claude")
         .join("skills")
-        .join(&skill_id);
-    fs::create_dir_all(&skill_dir).map_err(|e| e.to_string())?;
-    fs::write(skill_dir.join("SKILL.md"), content).map_err(|e| e.to_string())
+        .join(&extension_id);
+    fs::create_dir_all(&ext_dir).map_err(|e| e.to_string())?;
+    fs::write(ext_dir.join("SKILL.md"), content).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn delete_skill(project_path: String, skill_id: String) -> Result<(), String> {
-    let skill_dir = Path::new(&project_path)
+pub fn delete_extension(project_path: String, extension_id: String) -> Result<(), String> {
+    let ext_dir = Path::new(&project_path)
         .join(".claude")
         .join("skills")
-        .join(&skill_id);
-    if skill_dir.exists() {
-        fs::remove_dir_all(&skill_dir).map_err(|e| e.to_string())?;
+        .join(&extension_id);
+    if ext_dir.exists() {
+        fs::remove_dir_all(&ext_dir).map_err(|e| e.to_string())?;
     }
     Ok(())
 }

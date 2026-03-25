@@ -1,17 +1,17 @@
 import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
-import type { TabDescriptor } from '../../types/pipeline';
+import type { FileTab } from '../../types/harness';
 
-export function useChangeFiles(
+export function useRunFiles(
   projectPath: string | undefined,
-  tabs: TabDescriptor[]
+  tabs: FileTab[]
 ) {
   const [documents, setDocuments] = useState<Record<string, string>>({});
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
 
   const loadFiles = useCallback(
-    async (_changeName: string) => {
+    async (_runId: string) => {
       if (!projectPath || tabs.length === 0) {
         setDocuments({});
         return;
@@ -56,9 +56,9 @@ export function useChangeFiles(
         const fullPath = `${projectPath}/${tab.filePath}`;
         await invoke('write_text_file', { path: fullPath, content });
         setEditingTabId(null);
-        toast.success('已保存');
+        toast.success('Saved');
       } catch (e) {
-        toast.error(`保存失败: ${e}`);
+        toast.error(`Save failed: ${e}`);
       }
     },
     [projectPath, tabs, documents]

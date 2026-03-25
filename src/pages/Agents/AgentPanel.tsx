@@ -48,89 +48,18 @@ import {
   deleteAgent,
   type AgentInfo,
 } from '../../services/agent-service';
-import type { Port } from '../../types/pipeline';
-
 const ALL_TOOLS = [
   'Read', 'Edit', 'Write', 'Bash', 'Glob', 'Grep',
   'Agent', 'Notebook', 'WebSearch', 'WebFetch',
 ];
 
 const CATEGORIES = [
-  { id: 'planner', label: '规划', icon: FileText },
-  { id: 'implementer', label: '实现', icon: Code2 },
-  { id: 'verifier', label: '验证', icon: ClipboardCheck },
-  { id: 'reviewer', label: '审查', icon: Search },
-  { id: 'custom', label: '自定义', icon: Bot },
+  { id: 'planner', label: 'Planner', icon: FileText },
+  { id: 'implementer', label: 'Implementer', icon: Code2 },
+  { id: 'verifier', label: 'Verifier', icon: ClipboardCheck },
+  { id: 'reviewer', label: 'Reviewer', icon: Search },
+  { id: 'custom', label: 'Custom', icon: Bot },
 ] as const;
-
-function makePortId(name: string): string {
-  return name.trim().replace(/\s+/g, '-').replace(/[^a-zA-Z0-9\u4e00-\u9fa5-]/g, '').toLowerCase() || 'port';
-}
-
-function PortListEditor({
-  ports,
-  onChange,
-  label,
-}: {
-  ports: Port[];
-  onChange: (ports: Port[]) => void;
-  label: string;
-}) {
-  const addPort = () => {
-    onChange([
-      ...ports,
-      { id: `port-${Date.now()}`, name: '', type: 'file', required: false, defaultValue: '' },
-    ]);
-  };
-  const removePort = (idx: number) => onChange(ports.filter((_, i) => i !== idx));
-  const updatePort = (idx: number, patch: Partial<Port>) => {
-    const next = ports.map((p, i) => {
-      if (i !== idx) return p;
-      const updated = { ...p, ...patch };
-      if ('name' in patch) updated.id = makePortId(patch.name!);
-      return updated;
-    });
-    onChange(next);
-  };
-
-  return (
-    <div className="space-y-1.5">
-      <Label className="text-xs">{label}</Label>
-      {ports.map((port, idx) => (
-        <div key={idx} className="flex items-center gap-1.5">
-          <Input
-            placeholder="名称"
-            value={port.name}
-            onChange={(e) => updatePort(idx, { name: e.target.value })}
-            className="h-7 text-xs flex-1"
-          />
-          <button
-            onClick={() => updatePort(idx, { type: port.type === 'file' ? 'text' : 'file' })}
-            className={`px-2 py-1 rounded text-[10px] border transition-colors shrink-0 ${
-              port.type === 'file'
-                ? 'bg-blue-50 text-blue-600 border-blue-200'
-                : 'bg-amber-50 text-amber-600 border-amber-200'
-            }`}
-          >
-            {port.type === 'file' ? '文件' : '文本'}
-          </button>
-          <Input
-            placeholder="默认路径 (可用 {{changeName}})"
-            value={port.defaultValue ?? ''}
-            onChange={(e) => updatePort(idx, { defaultValue: e.target.value })}
-            className="h-7 text-xs flex-[2]"
-          />
-          <button onClick={() => removePort(idx)} className="p-1 rounded hover:bg-accent shrink-0">
-            <Trash2 className="w-3 h-3 text-muted-foreground/50" />
-          </button>
-        </div>
-      ))}
-      <button onClick={addPort} className="text-[11px] text-primary hover:text-primary/80 transition-colors cursor-pointer">
-        + 添加端口
-      </button>
-    </div>
-  );
-}
 
 interface AgentPanelProps {
   projectPath: string | undefined;
@@ -150,8 +79,6 @@ export default function AgentPanel({ projectPath }: AgentPanelProps) {
   const [newCategory, setNewCategory] = useState('custom');
   const [newTools, setNewTools] = useState<string[]>(['Read', 'Glob', 'Grep']);
   const [newMaxTurns, setNewMaxTurns] = useState(20);
-  const [newInputPorts, setNewInputPorts] = useState<Port[]>([]);
-  const [newOutputPorts, setNewOutputPorts] = useState<Port[]>([]);
   const [newPromptTemplate, setNewPromptTemplate] = useState('');
   const [newSaving, setNewSaving] = useState(false);
 
@@ -162,8 +89,6 @@ export default function AgentPanel({ projectPath }: AgentPanelProps) {
   const [configAgent, setConfigAgent] = useState<AgentInfo | null>(null);
   const [configTools, setConfigTools] = useState<string[]>([]);
   const [configMaxTurns, setConfigMaxTurns] = useState(20);
-  const [configInputPorts, setConfigInputPorts] = useState<Port[]>([]);
-  const [configOutputPorts, setConfigOutputPorts] = useState<Port[]>([]);
   const [configPromptTemplate, setConfigPromptTemplate] = useState('');
   const [configSaving, setConfigSaving] = useState(false);
 
@@ -176,7 +101,7 @@ export default function AgentPanel({ projectPath }: AgentPanelProps) {
       setAgents(list);
       setEnabledAgents(new Set(config.enabled));
     } catch (e) {
-      toast.error(`Agent 加载失败: ${e}`);
+      toast.error(`Agent load failed: ${e}`);
     } finally {
       setLoading(false);
     }
@@ -196,7 +121,7 @@ export default function AgentPanel({ projectPath }: AgentPanelProps) {
         checked ? next.add(agentId) : next.delete(agentId);
         return next;
       });
-    } catch (e) { toast.error(`更新失败: ${e}`); }
+    } catch (e) { toast.error(`Update failed: ${e}`); }
   };
 
   const handleOpenEdit = async (agent: AgentInfo) => {
@@ -210,10 +135,10 @@ export default function AgentPanel({ projectPath }: AgentPanelProps) {
     setEditSaving(true);
     try {
       await saveAgentPrompt(projectPath, editingAgent.id, editContent);
-      toast.success('已保存');
+      toast.success('Saved');
       setEditingAgent(null);
       await loadAgents(projectPath);
-    } catch (e) { toast.error(`保存失败: ${e}`); }
+    } catch (e) { toast.error(`Save failed: ${e}`); }
     finally { setEditSaving(false); }
   };
 
@@ -222,14 +147,10 @@ export default function AgentPanel({ projectPath }: AgentPanelProps) {
     if (config) {
       setConfigTools(config.allowedTools);
       setConfigMaxTurns(config.maxTurns);
-      setConfigInputPorts(config.inputPorts ?? []);
-      setConfigOutputPorts(config.outputPorts ?? []);
       setConfigPromptTemplate(config.promptTemplate ?? '');
     } else {
       setConfigTools(['Read', 'Glob', 'Grep']);
       setConfigMaxTurns(20);
-      setConfigInputPorts([]);
-      setConfigOutputPorts([]);
       setConfigPromptTemplate('');
     }
     setConfigAgent(agent);
@@ -242,13 +163,11 @@ export default function AgentPanel({ projectPath }: AgentPanelProps) {
       await saveAgentToolConfig(projectPath, configAgent.id, {
         allowedTools: configTools,
         maxTurns: configMaxTurns,
-        inputPorts: configInputPorts,
-        outputPorts: configOutputPorts,
         promptTemplate: configPromptTemplate,
       });
-      toast.success('配置已保存');
+      toast.success('Config saved');
       setConfigAgent(null);
-    } catch (e) { toast.error(`保存失败: ${e}`); }
+    } catch (e) { toast.error(`Save failed: ${e}`); }
     finally { setConfigSaving(false); }
   };
 
@@ -260,9 +179,9 @@ export default function AgentPanel({ projectPath }: AgentPanelProps) {
     if (!projectPath) return;
     try {
       await deleteAgent(projectPath, agentId);
-      toast.success('已删除');
+      toast.success('Deleted');
       await loadAgents(projectPath);
-    } catch (e) { toast.error(`删除失败: ${e}`); }
+    } catch (e) { toast.error(`Delete failed: ${e}`); }
   };
 
   const handleCreate = async () => {
@@ -273,17 +192,15 @@ export default function AgentPanel({ projectPath }: AgentPanelProps) {
         allowedTools: newTools,
         maxTurns: newMaxTurns,
         category: newCategory,
-        inputPorts: newInputPorts,
-        outputPorts: newOutputPorts,
         promptTemplate: newPromptTemplate,
       });
-      toast.success(`Agent "${newId}" 已创建`);
+      toast.success(`Agent "${newId}" created`);
       setNewOpen(false);
       setNewId(''); setNewName(''); setNewDesc(''); setNewBody('');
       setNewCategory('custom'); setNewTools(['Read', 'Glob', 'Grep']); setNewMaxTurns(20);
-      setNewInputPorts([]); setNewOutputPorts([]); setNewPromptTemplate('');
+      setNewPromptTemplate('');
       await loadAgents(projectPath);
-    } catch (e) { toast.error(`创建失败: ${e}`); }
+    } catch (e) { toast.error(`Create failed: ${e}`); }
     finally { setNewSaving(false); }
   };
 
@@ -292,21 +209,15 @@ export default function AgentPanel({ projectPath }: AgentPanelProps) {
   );
 
   if (!projectPath) {
-    return <div className="p-4 text-center text-sm text-muted-foreground">请先打开一个项目</div>;
+    return <div className="p-4 text-center text-sm text-muted-foreground">Open a project first</div>;
   }
 
   return (
     <div className="flex flex-col h-full">
-      {/* Toolbar */}
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/30 shrink-0">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
-          <Input
-            placeholder="搜索 Agent..."
-            className="pl-8 h-7 text-xs bg-white/40 border-border/40"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+          <Input placeholder="Search agents..." className="pl-8 h-7 text-xs bg-white/40 border-border/40" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
         </div>
         <Button variant="ghost" size="icon-xs" disabled={loading} onClick={() => loadAgents(projectPath)}>
           <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
@@ -316,12 +227,11 @@ export default function AgentPanel({ projectPath }: AgentPanelProps) {
         </Button>
       </div>
 
-      {/* List */}
       <div className="flex-1 overflow-auto p-3 space-y-2">
         {filtered.length === 0 ? (
           <div className="text-center py-8 space-y-1.5">
             <Bot className="w-8 h-8 mx-auto text-muted-foreground/25" />
-            <p className="text-xs text-muted-foreground">暂无 Agent</p>
+            <p className="text-xs text-muted-foreground">No agents</p>
           </div>
         ) : (
           filtered.map((agent) => (
@@ -331,17 +241,17 @@ export default function AgentPanel({ projectPath }: AgentPanelProps) {
                   {agent.builtin ? <Shield className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-semibold truncate">{agent.name}</span>
-                    {agent.builtin && <Badge variant="secondary" className="text-[9px] h-3.5 px-1">内置</Badge>}
+                  <span className="text-xs font-semibold truncate block">{agent.name}</span>
+                  {agent.description && <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-1">{agent.description}</p>}
+                  <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                    {agent.builtin && <Badge variant="secondary" className="text-[9px] h-3.5 px-1">Built-in</Badge>}
                     {agent.category && agent.category !== 'custom' && (
                       <Badge variant="secondary" className="text-[9px] h-3.5 px-1">
                         {CATEGORIES.find((c) => c.id === agent.category)?.label ?? agent.category}
                       </Badge>
                     )}
-                    {enabledAgents.has(agent.id) && <Badge variant="secondary" className="text-[9px] h-3.5 px-1 bg-green-100 text-green-700">启用</Badge>}
+                    {enabledAgents.has(agent.id) && <Badge variant="secondary" className="text-[9px] h-3.5 px-1 bg-green-100 text-green-700">Enabled</Badge>}
                   </div>
-                  {agent.description && <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-1">{agent.description}</p>}
                 </div>
                 <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity shrink-0">
                   <button role="switch" aria-checked={enabledAgents.has(agent.id)} onClick={() => handleToggle(agent.id, !enabledAgents.has(agent.id))}
@@ -354,8 +264,8 @@ export default function AgentPanel({ projectPath }: AgentPanelProps) {
                     <AlertDialog>
                       <AlertDialogTrigger render={<button className="p-1 rounded hover:bg-accent" />}><Trash2 className="w-3 h-3 text-muted-foreground/50" /></AlertDialogTrigger>
                       <AlertDialogContent>
-                        <AlertDialogHeader><AlertDialogTitle>删除 Agent "{agent.name}"？</AlertDialogTitle><AlertDialogDescription>将删除 <code className="text-xs">.claude/agents/{agent.id}.md</code> 及对应配置，操作不可撤销。</AlertDialogDescription></AlertDialogHeader>
-                        <AlertDialogFooter><AlertDialogCancel>取消</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete(agent.id)} className="bg-destructive hover:bg-destructive/90">删除</AlertDialogAction></AlertDialogFooter>
+                        <AlertDialogHeader><AlertDialogTitle>Delete Agent "{agent.name}"?</AlertDialogTitle><AlertDialogDescription>This will delete <code className="text-xs">.claude/agents/{agent.id}.md</code> and its config. This cannot be undone.</AlertDialogDescription></AlertDialogHeader>
+                        <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDelete(agent.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction></AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
                   )}
@@ -366,27 +276,24 @@ export default function AgentPanel({ projectPath }: AgentPanelProps) {
         )}
       </div>
 
-      {/* Dialogs (new / edit / config) */}
+      {/* New Agent Dialog */}
       <Dialog open={newOpen} onOpenChange={setNewOpen}>
         <DialogContent className="max-w-xl">
-          <DialogHeader><DialogTitle>新建 Agent</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>New Agent</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5"><Label className="text-xs">Agent ID <span className="text-destructive">*</span></Label><Input placeholder="如: CodeReviewer" value={newId} onChange={(e) => setNewId(e.target.value)} /><p className="text-[11px] text-muted-foreground">文件名（不含 .md），建议 PascalCase</p></div>
-              <div className="space-y-1.5"><Label className="text-xs">显示名称</Label><Input placeholder="留空则同 ID" value={newName} onChange={(e) => setNewName(e.target.value)} /></div>
+              <div className="space-y-1.5"><Label className="text-xs">Agent ID <span className="text-destructive">*</span></Label><Input placeholder="e.g. CodeReviewer" value={newId} onChange={(e) => setNewId(e.target.value)} /><p className="text-[11px] text-muted-foreground">Filename (no .md), use PascalCase</p></div>
+              <div className="space-y-1.5"><Label className="text-xs">Display Name</Label><Input placeholder="Leave blank to use ID" value={newName} onChange={(e) => setNewName(e.target.value)} /></div>
             </div>
-            <div className="space-y-1.5"><Label className="text-xs">描述</Label><Input placeholder="一句话说明 Agent 的职责" value={newDesc} onChange={(e) => setNewDesc(e.target.value)} /></div>
+            <div className="space-y-1.5"><Label className="text-xs">Description</Label><Input placeholder="One-line agent description" value={newDesc} onChange={(e) => setNewDesc(e.target.value)} /></div>
             <div className="space-y-1.5">
-              <Label className="text-xs">类别</Label>
+              <Label className="text-xs">Category</Label>
               <div className="flex flex-wrap gap-1.5">
                 {CATEGORIES.map((cat) => {
                   const CatIcon = cat.icon;
                   return (
-                    <button
-                      key={cat.id}
-                      onClick={() => setNewCategory(cat.id)}
-                      className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs border transition-colors cursor-pointer ${newCategory === cat.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-white/40 border-border/40 text-muted-foreground hover:border-primary/40'}`}
-                    >
+                    <button key={cat.id} onClick={() => setNewCategory(cat.id)}
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs border transition-colors cursor-pointer ${newCategory === cat.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-white/40 border-border/40 text-muted-foreground hover:border-primary/40'}`}>
                       <CatIcon className="w-3 h-3" />
                       {cat.label}
                     </button>
@@ -395,27 +302,26 @@ export default function AgentPanel({ projectPath }: AgentPanelProps) {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">允许的工具</Label>
+              <Label className="text-xs">Allowed Tools</Label>
               <div className="flex flex-wrap gap-1.5">
                 {ALL_TOOLS.map((tool) => (<button key={tool} onClick={() => toggleTool(tool, newTools, setNewTools)} className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${newTools.includes(tool) ? 'bg-primary text-primary-foreground border-primary' : 'bg-white/40 border-border/40 text-muted-foreground hover:border-primary/40'}`}>{tool}</button>))}
               </div>
             </div>
-            <div className="space-y-1.5"><Label className="text-xs">最大轮次</Label><Input type="number" min={1} max={200} value={newMaxTurns} onChange={(e) => setNewMaxTurns(Number(e.target.value))} className="w-32" /></div>
-            <PortListEditor ports={newInputPorts} onChange={setNewInputPorts} label="输入端口" />
-            <PortListEditor ports={newOutputPorts} onChange={setNewOutputPorts} label="输出端口" />
-            <div className="space-y-1.5"><Label className="text-xs">Prompt 模板</Label><Textarea placeholder="可用 {{端口id}} 引用端口路径，如: 请阅读 {{requirements}} ..." className="font-mono text-xs min-h-[60px]" value={newPromptTemplate} onChange={(e) => setNewPromptTemplate(e.target.value)} /></div>
-            <div className="space-y-1.5"><Label className="text-xs">System Prompt（Markdown）</Label><Textarea placeholder="描述此 Agent 的角色、行为准则与输出格式..." className="font-mono text-xs min-h-[180px]" value={newBody} onChange={(e) => setNewBody(e.target.value)} /></div>
+            <div className="space-y-1.5"><Label className="text-xs">Max Turns</Label><Input type="number" min={1} max={200} value={newMaxTurns} onChange={(e) => setNewMaxTurns(Number(e.target.value))} className="w-32" /></div>
+            <div className="space-y-1.5"><Label className="text-xs">Prompt Template</Label><Textarea placeholder="Use {{runId}} to reference the current run, e.g. Read .harness/runs/{{runId}}/outputs/dev-plan.md ..." className="font-mono text-xs min-h-[60px]" value={newPromptTemplate} onChange={(e) => setNewPromptTemplate(e.target.value)} /></div>
+            <div className="space-y-1.5"><Label className="text-xs">System Prompt (Markdown)</Label><Textarea placeholder="Describe the agent's role, guidelines, and output format..." className="font-mono text-xs min-h-[180px]" value={newBody} onChange={(e) => setNewBody(e.target.value)} /></div>
           </div>
-          <DialogFooter><Button variant="ghost" onClick={() => setNewOpen(false)}>取消</Button><Button disabled={!newId.trim() || newSaving} onClick={handleCreate}>{newSaving ? '保存中...' : '创建'}</Button></DialogFooter>
+          <DialogFooter><Button variant="ghost" onClick={() => setNewOpen(false)}>Cancel</Button><Button disabled={!newId.trim() || newSaving} onClick={handleCreate}>{newSaving ? 'Saving...' : 'Create'}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
+      {/* Edit Prompt Dialog */}
       <Dialog open={!!editingAgent} onOpenChange={(open) => !open && setEditingAgent(null)}>
         <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
           <DialogHeader className="shrink-0">
             <div className="flex items-center justify-between">
               <div className="min-w-0"><DialogTitle className="text-sm">{editingAgent?.name}</DialogTitle><p className="text-[11px] text-muted-foreground font-mono mt-0.5 truncate">.claude/agents/{editingAgent?.id}.md</p></div>
-              <div className="flex items-center gap-2 shrink-0"><Button variant="outline" size="sm" className="h-7 text-xs" disabled={editSaving} onClick={handleSaveEdit}>{editSaving ? '保存中...' : '保存'}</Button><Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditingAgent(null)}>关闭</Button></div>
+              <div className="flex items-center gap-2 shrink-0"><Button variant="outline" size="sm" className="h-7 text-xs" disabled={editSaving} onClick={handleSaveEdit}>{editSaving ? 'Saving...' : 'Save'}</Button><Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditingAgent(null)}>Close</Button></div>
             </div>
           </DialogHeader>
           <div className="flex-1 min-h-0 rounded-xl border border-border/30 bg-white/30 backdrop-blur-sm overflow-hidden">
@@ -424,22 +330,21 @@ export default function AgentPanel({ projectPath }: AgentPanelProps) {
         </DialogContent>
       </Dialog>
 
+      {/* Config Dialog */}
       <Dialog open={!!configAgent} onOpenChange={(open) => !open && setConfigAgent(null)}>
         <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
-          <DialogHeader><DialogTitle className="text-sm">{configAgent?.name} - 配置</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-sm">{configAgent?.name} - Config</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2 flex-1 overflow-auto">
             <div className="space-y-1.5">
-              <Label className="text-xs">允许的工具</Label>
+              <Label className="text-xs">Allowed Tools</Label>
               <div className="flex flex-wrap gap-1.5">
                 {ALL_TOOLS.map((tool) => (<button key={tool} onClick={() => toggleTool(tool, configTools, setConfigTools)} className={`px-2.5 py-1 rounded-md text-xs border transition-colors cursor-pointer ${configTools.includes(tool) ? 'bg-primary text-primary-foreground border-primary' : 'bg-white/40 border-border/40 text-muted-foreground hover:border-primary/40'}`}>{tool}</button>))}
               </div>
             </div>
-            <div className="space-y-1.5"><Label className="text-xs">最大轮次</Label><Input type="number" min={1} max={200} value={configMaxTurns} onChange={(e) => setConfigMaxTurns(Number(e.target.value))} className="w-32" /></div>
-            <PortListEditor ports={configInputPorts} onChange={setConfigInputPorts} label="输入端口" />
-            <PortListEditor ports={configOutputPorts} onChange={setConfigOutputPorts} label="输出端口" />
-            <div className="space-y-1.5"><Label className="text-xs">Prompt 模板</Label><Textarea placeholder="可用 {{端口id}} 引用端口路径..." className="font-mono text-xs min-h-[60px]" value={configPromptTemplate} onChange={(e) => setConfigPromptTemplate(e.target.value)} /></div>
+            <div className="space-y-1.5"><Label className="text-xs">Max Turns</Label><Input type="number" min={1} max={200} value={configMaxTurns} onChange={(e) => setConfigMaxTurns(Number(e.target.value))} className="w-32" /></div>
+            <div className="space-y-1.5"><Label className="text-xs">Prompt Template</Label><Textarea placeholder="Use {{runId}} to reference the current run..." className="font-mono text-xs min-h-[60px]" value={configPromptTemplate} onChange={(e) => setConfigPromptTemplate(e.target.value)} /></div>
           </div>
-          <DialogFooter><Button variant="ghost" onClick={() => setConfigAgent(null)}>取消</Button><Button disabled={configSaving} onClick={handleSaveConfig}>{configSaving ? '保存中...' : '保存'}</Button></DialogFooter>
+          <DialogFooter><Button variant="ghost" onClick={() => setConfigAgent(null)}>Cancel</Button><Button disabled={configSaving} onClick={handleSaveConfig}>{configSaving ? 'Saving...' : 'Save'}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

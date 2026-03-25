@@ -2,8 +2,8 @@ export interface ProjectInfo {
   path: string;
   name: string;
   is_git: boolean;
-  has_specs: boolean;
-  active_changes: string[];
+  has_harness: boolean;
+  active_runs: string[];
   last_opened: string;
 }
 

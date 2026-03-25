@@ -78,10 +78,10 @@ pub fn write_text_file(path: String, content: String) -> Result<(), String> {
 pub fn scan_directory(path: String, max_depth: u32) -> Result<DirEntry, String> {
     let root = Path::new(&path);
     if !root.exists() {
-        return Err("路径不存在".to_string());
+        return Err("Path does not exist".to_string());
     }
     if !root.is_dir() {
-        return Err("路径不是目录".to_string());
+        return Err("Path is not a directory".to_string());
     }
 
     let name = root

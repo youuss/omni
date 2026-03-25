@@ -1,26 +1,27 @@
 import { create } from 'zustand';
-import type { ProjectInfo, ChangeInfo } from '../types';
+import type { ProjectInfo } from '../types';
+import type { RunInfo } from '../types/run';
 import * as projectService from '../services/project';
-import * as specService from '../services/spec';
+import * as runService from '../services/run-service';
 
 interface ProjectState {
   projects: ProjectInfo[];
   currentProject: ProjectInfo | null;
-  changes: ChangeInfo[];
+  runs: RunInfo[];
   loading: boolean;
 
   loadProjects: () => Promise<void>;
   openProject: (path: string) => Promise<void>;
   addProject: (path: string, name: string) => Promise<void>;
   removeProject: (path: string) => Promise<void>;
-  loadChanges: () => Promise<void>;
+  loadRuns: () => Promise<void>;
   setCurrentProject: (project: ProjectInfo | null) => void;
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
   projects: [],
   currentProject: null,
-  changes: [],
+  runs: [],
   loading: false,
 
   loadProjects: async () => {
@@ -41,7 +42,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const project = await projectService.openProject(path);
       await projectService.addProject(project.path, project.name);
       set({ currentProject: project });
-      await get().loadChanges();
+      await get().loadRuns();
       await get().loadProjects();
     } finally {
       set({ loading: false });
@@ -57,19 +58,19 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     await projectService.removeProject(path);
     const { currentProject } = get();
     if (currentProject?.path === path) {
-      set({ currentProject: null, changes: [] });
+      set({ currentProject: null, runs: [] });
     }
     await get().loadProjects();
   },
 
-  loadChanges: async () => {
+  loadRuns: async () => {
     const { currentProject } = get();
     if (!currentProject) return;
     try {
-      const changes = await specService.listActiveChanges(currentProject.path);
-      set({ changes });
+      const runs = await runService.listActiveRuns(currentProject.path);
+      set({ runs });
     } catch {
-      set({ changes: [] });
+      set({ runs: [] });
     }
   },
 
