@@ -1,11 +1,17 @@
 import { Command } from '@tauri-apps/plugin-shell';
-import { invoke } from '@tauri-apps/api/core';
-import { join, resolveResource } from '@tauri-apps/api/path';
-import { loadAgentConfig } from './agent-config-service';
-import { getEnabledExtensionPaths } from '../extension-service';
+import { resolveResource } from '@tauri-apps/api/path';
 import { parseStreamLine, extractSessionId } from './stream-parser';
 import { saveSession, getSession } from './session-store';
-import type { AgentName, SDKMessage, SDKRunnerConfig, AgentRunHandle } from '../../types';
+import type {
+  AgentRunHandle,
+  SDKMessage,
+  RunRequest,
+  AgentOverride,
+  McpServerConfig,
+  HooksConfig,
+  PermissionMode,
+  SettingSource,
+} from '../../types';
 
 export const FULL_COMMAND_LOG_STORAGE_KEY = 'omni.show-full-claude-command';
 
@@ -14,18 +20,24 @@ export type ErrorCallback = (text: string) => void;
 export type DoneCallback = (code: number | null) => void;
 export type StatusCallback = (text: string) => void;
 
-interface RunAgentOptions {
-  agentName: AgentName;
+export interface RunAgentOptions {
+  projectPath: string;
+  agentNames: string[];
   prompt: string;
-  cwd: string;
   runId?: string;
   onEvent: EventCallback;
   onError?: ErrorCallback;
   onStatus?: StatusCallback;
   onDone?: DoneCallback;
-  resumeSession?: boolean;
-  maxTurnsOverride?: number;
-  allowedToolsOverride?: string[];
+  overrides?: Record<string, AgentOverride>;
+  resume?: boolean;
+  model?: string;
+  maxBudgetUsd?: number;
+  permissionMode?: PermissionMode;
+  settingSources?: SettingSource[];
+  mcpServers?: Record<string, McpServerConfig>;
+  hooks?: HooksConfig;
+  includePartialMessages?: boolean;
 }
 
 function isBenignStdinWarning(text: string): boolean {
@@ -40,86 +52,54 @@ export async function runAgent(
   options: RunAgentOptions
 ): Promise<AgentRunHandle> {
   const {
-    agentName,
+    projectPath,
+    agentNames,
     prompt,
-    cwd,
     runId,
     onEvent,
     onError,
     onStatus,
     onDone,
-    resumeSession = false,
-    maxTurnsOverride,
-    allowedToolsOverride,
+    overrides,
+    resume = false,
+    model,
+    maxBudgetUsd,
+    permissionMode = 'bypassPermissions',
+    settingSources = ['project'],
+    mcpServers,
+    hooks,
+    includePartialMessages,
   } = options;
 
-  const [config, enabledExtPaths] = await Promise.all([
-    loadAgentConfig(cwd, agentName),
-    getEnabledExtensionPaths(cwd),
-  ]);
-
-  const effectiveMaxTurns = maxTurnsOverride ?? config.maxTurns;
-  const effectiveTools = allowedToolsOverride ?? config.allowedTools;
-
-  // Read agent system prompt from .claude/agents/{Name}.md
-  const agentDefPath = await join(cwd, '.claude', 'agents', `${agentName}.md`);
-  let systemPrompt: string | undefined;
-  try {
-    systemPrompt = await invoke<string>('read_text_file', { path: agentDefPath });
-    onStatus?.(`[agent] Definition file: ${agentDefPath}`);
-  } catch {
-    onStatus?.(`[agent] Definition file not found: ${agentDefPath}, using Claude defaults`);
-  }
-
-  // Append extension prompts
-  let appendSystemPrompt: string | undefined;
-  if (enabledExtPaths.length > 0) {
-    onStatus?.(
-      `[extensions] Injecting ${enabledExtPaths.length} extensions: ${enabledExtPaths
-        .map((p) => p.split('/').slice(-2, -1)[0])
-        .join(', ')}`
-    );
-    const extContents = await Promise.all(
-      enabledExtPaths.map((p) => invoke<string>('read_text_file', { path: p }).catch(() => ''))
-    );
-    const merged = extContents.filter(Boolean).join('\n\n---\n\n');
-    if (merged) appendSystemPrompt = merged;
-  }
-
-  // Build SDK runner config
-  const sdkConfig: SDKRunnerConfig = {
+  // Build RunRequest
+  const runRequest: RunRequest = {
+    projectPath,
     prompt,
-    cwd,
-    maxTurns: effectiveMaxTurns,
-    permissionMode: 'bypassPermissions',
-    settingSources: ['project'],
+    agents: agentNames,
+    permissionMode,
+    settingSources,
   };
 
-  if (systemPrompt) {
-    sdkConfig.systemPrompt = systemPrompt;
-  }
-  if (appendSystemPrompt) {
-    sdkConfig.appendSystemPrompt = appendSystemPrompt;
-  }
-  if (effectiveTools.length > 0) {
-    sdkConfig.allowedTools = effectiveTools;
-  }
-  if (resumeSession && runId) {
-    const sessionId = getSession(runId, agentName);
+  if (overrides && Object.keys(overrides).length > 0) runRequest.overrides = overrides;
+  if (model) runRequest.model = model;
+  if (maxBudgetUsd) runRequest.maxBudgetUsd = maxBudgetUsd;
+  if (mcpServers && Object.keys(mcpServers).length > 0) runRequest.mcpServers = mcpServers;
+  if (hooks && Object.keys(hooks).length > 0) runRequest.hooks = hooks;
+  if (includePartialMessages) runRequest.includePartialMessages = true;
+
+  // Handle session resume
+  if (resume && runId && agentNames.length === 1) {
+    const sessionId = getSession(runId, agentNames[0]);
     if (sessionId) {
-      sdkConfig.resume = sessionId;
+      runRequest.resume = sessionId;
     }
   }
 
-  // Base64-encode the config for CLI arg
-  const configB64 = btoa(JSON.stringify(sdkConfig));
-
-  // Resolve the SDK runner script path
   const runnerScript = await resolveResource('scripts/sdk-runner.mjs');
 
-  onStatus?.(`[sdk] Starting agent "${agentName}" via Agent SDK`);
+  onStatus?.(`[sdk] Starting agents [${agentNames.join(', ')}] via Agent SDK`);
 
-  const cmd = Command.create('run-sdk-runner', [runnerScript, configB64], { cwd });
+  const cmd = Command.create('run-sdk-runner', [runnerScript], { cwd: projectPath });
   const startedAt = Date.now();
   let lastActivityAt = startedAt;
 
@@ -134,8 +114,8 @@ export async function runAgent(
     }
 
     const sid = extractSessionId(message);
-    if (sid && runId) {
-      saveSession(runId, agentName, sid);
+    if (sid && runId && agentNames.length > 0) {
+      saveSession(runId, agentNames[0], sid);
     }
 
     onEvent(message);
@@ -155,6 +135,9 @@ export async function runAgent(
   const child = await cmd.spawn();
   onStatus?.(`[sdk] Spawned sdk-runner pid=${child.pid}`);
 
+  // Write RunRequest as first stdin line
+  await child.write(JSON.stringify(runRequest) + '\n');
+
   const heartbeat = setInterval(() => {
     const now = Date.now();
     const idleSec = Math.floor((now - lastActivityAt) / 1000);
@@ -172,8 +155,7 @@ export async function runAgent(
 
   return {
     abort: () => {
-      // Send abort signal via stdin, then kill
-      child.write('__ABORT__\n').catch(() => {});
+      child.write('{"cmd":"abort"}\n').catch(() => {});
       setTimeout(() => child.kill(), 1000);
     },
     pid: child.pid,
