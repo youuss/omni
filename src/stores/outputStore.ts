@@ -11,6 +11,8 @@ interface OutputLine {
 interface OutputState {
   lines: OutputLine[];
   rawEvents: SDKMessage[];
+  partialText: string;
+  isStreaming: boolean;
 
   appendLine: (type: OutputLine['type'], content: string) => void;
   appendEvent: (event: SDKMessage) => void;
@@ -59,9 +61,12 @@ function extractLinesFromMessage(msg: SDKMessage): OutputLine[] {
     }
 
     case 'result': {
-      const result = msg as { subtype?: string; result?: string; errors?: string[] };
+      const result = msg as { subtype?: string; result?: string; errors?: string[]; total_cost_usd?: number };
       if (result.subtype === 'success' && result.result) {
         return [makeLine('text', String(result.result))];
+      }
+      if (result.subtype === 'error_max_budget_usd') {
+        return [makeLine('error', `Budget limit exceeded (cost: $${result.total_cost_usd?.toFixed(2) ?? '?'})`)];
       }
       if (result.errors?.length) {
         return result.errors.map((e) => makeLine('error', e));
@@ -78,7 +83,6 @@ function extractLinesFromMessage(msg: SDKMessage): OutputLine[] {
     }
 
     default: {
-      // raw text or unknown types
       const text = (msg as { text?: string }).text;
       if (text) return [makeLine('system', text)];
       return [];
@@ -89,6 +93,8 @@ function extractLinesFromMessage(msg: SDKMessage): OutputLine[] {
 export const useOutputStore = create<OutputState>((set) => ({
   lines: [],
   rawEvents: [],
+  partialText: '',
+  isStreaming: false,
 
   appendLine: (type, content) =>
     set((state) => ({
@@ -96,13 +102,34 @@ export const useOutputStore = create<OutputState>((set) => ({
     })),
 
   appendEvent: (event) =>
-    set((state) => ({
-      lines: [...state.lines, ...extractLinesFromMessage(event)],
-      rawEvents: [...state.rawEvents, event],
-    })),
+    set((state) => {
+      // Handle stream_event for partial message streaming
+      if (event.type === 'stream_event') {
+        const streamEvent = event as { event?: { type?: string; delta?: { type?: string; text?: string } } };
+        const delta = streamEvent.event?.delta;
+        if (delta?.type === 'text_delta' && delta.text) {
+          return {
+            ...state,
+            partialText: state.partialText + delta.text,
+            isStreaming: true,
+            rawEvents: [...state.rawEvents, event],
+          };
+        }
+        return { ...state, rawEvents: [...state.rawEvents, event] };
+      }
+
+      // When a complete assistant message arrives, clear partial state
+      const clearPartial = event.type === 'assistant' || event.type === 'result';
+
+      return {
+        lines: [...state.lines, ...extractLinesFromMessage(event)],
+        rawEvents: [...state.rawEvents, event],
+        ...(clearPartial ? { partialText: '', isStreaming: false } : {}),
+      };
+    }),
 
   clear: () => {
     lineCounter = 0;
-    set({ lines: [], rawEvents: [] });
+    set({ lines: [], rawEvents: [], partialText: '', isStreaming: false });
   },
 }));
