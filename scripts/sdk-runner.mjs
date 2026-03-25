@@ -1,97 +1,190 @@
 #!/usr/bin/env node
 /**
- * SDK Runner — Node.js sidecar for Tauri.
+ * SDK Runner — Fat sidecar for Tauri.
  *
- * Receives a base64-encoded JSON config via argv[2], calls the Agent SDK
- * `query()` function, and streams each SDKMessage as a JSON line to stdout.
+ * Reads a RunRequest JSON from stdin (first line), loads agent definitions
+ * from the project directory, assembles SDK Options, calls query(), and
+ * streams each SDKMessage as a JSON line to stdout.
  *
- * Tauri frontend spawns this script via plugin-shell and reads stdout lines.
+ * Control commands (abort, interrupt) are sent as subsequent stdin JSON lines.
  */
 import { query } from '@anthropic-ai/claude-agent-sdk';
+import { readFile, readdir } from 'node:fs/promises';
+import { join } from 'node:path';
+import { createInterface } from 'node:readline';
 
-const configJson = Buffer.from(process.argv[2] ?? '', 'base64').toString();
-let config;
+// --- Read first stdin line as RunRequest ---
+const rl = createInterface({ input: process.stdin, terminal: false });
+
+function readFirstLine() {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('stdin timeout')), 30_000);
+    rl.once('line', (line) => {
+      clearTimeout(timeout);
+      resolve(line);
+    });
+    rl.once('close', () => {
+      clearTimeout(timeout);
+      reject(new Error('stdin closed before RunRequest'));
+    });
+  });
+}
+
+let request;
 try {
-  config = JSON.parse(configJson);
-} catch {
-  process.stderr.write('sdk-runner: invalid config JSON\n');
+  const line = await readFirstLine();
+  request = JSON.parse(line);
+} catch (err) {
+  process.stderr.write(`sdk-runner: failed to read RunRequest: ${err.message}\n`);
   process.exit(1);
 }
 
 const {
+  projectPath,
   prompt,
-  cwd,
-  systemPrompt,
+  agents: agentNames = [],
   maxTurns,
-  allowedTools,
-  disallowedTools,
-  permissionMode = 'bypassPermissions',
-  resume,
+  maxBudgetUsd,
   model,
-  appendSystemPrompt,
+  permissionMode = 'bypassPermissions',
   settingSources,
-} = config;
+  resume,
+  overrides = {},
+  includePartialMessages,
+  mcpServers,
+  hooks,
+} = request;
 
-// Build SDK options
+if (!projectPath || !prompt) {
+  process.stderr.write('sdk-runner: projectPath and prompt are required\n');
+  process.exit(1);
+}
+
+// --- Read agent definitions from disk ---
+
+async function readAgentPrompt(name) {
+  const mdPath = join(projectPath, '.claude', 'agents', `${name}.md`);
+  try {
+    return await readFile(mdPath, 'utf-8');
+  } catch {
+    return `You are the ${name} agent.`;
+  }
+}
+
+async function readAgentConfig(name) {
+  const jsonPath = join(projectPath, '.harness', 'agents', `${name}.json`);
+  try {
+    const content = await readFile(jsonPath, 'utf-8');
+    return JSON.parse(content);
+  } catch {
+    return { allowedTools: [], maxTurns: 20 };
+  }
+}
+
+async function readEnabledExtensions() {
+  const configPath = join(projectPath, '.harness', 'extensions.json');
+  let enabledIds;
+  try {
+    const content = await readFile(configPath, 'utf-8');
+    enabledIds = JSON.parse(content).enabled ?? [];
+  } catch {
+    return [];
+  }
+
+  const extDir = join(projectPath, '.harness', 'extensions');
+  const prompts = [];
+  for (const id of enabledIds) {
+    const mdPath = join(extDir, id, 'prompt.md');
+    try {
+      prompts.push(await readFile(mdPath, 'utf-8'));
+    } catch {
+      // extension missing or unreadable — skip
+    }
+  }
+  return prompts;
+}
+
+// Build SDK agents record
+const sdkAgents = {};
+const extensionPrompts = await readEnabledExtensions();
+
+for (const name of agentNames) {
+  let agentPrompt = await readAgentPrompt(name);
+  const config = await readAgentConfig(name);
+  const override = overrides[name] ?? {};
+
+  // Append extension prompts
+  if (extensionPrompts.length > 0) {
+    agentPrompt += '\n\n---\n\n' + extensionPrompts.join('\n\n---\n\n');
+  }
+
+  // Append promptExtra from override
+  if (override.promptExtra) {
+    agentPrompt += '\n\n---\n\n' + override.promptExtra;
+  }
+
+  const tools = override.allowedTools ?? (config.allowedTools?.length ? config.allowedTools : undefined);
+  const agentModel = override.model ?? config.model;
+
+  sdkAgents[name] = {
+    description: `Use the ${name} agent for its designated tasks.`,
+    prompt: agentPrompt,
+    ...(tools && { tools }),
+    ...(agentModel && agentModel !== 'inherit' && { model: agentModel }),
+  };
+}
+
+// --- Assemble SDK Options ---
+
+const ac = new AbortController();
+
 const options = {
-  cwd: cwd || process.cwd(),
+  cwd: projectPath,
   permissionMode,
   allowDangerouslySkipPermissions: permissionMode === 'bypassPermissions',
+  abortController: ac,
 };
 
-if (systemPrompt) {
-  // If it's a path-like string, use claude_code preset + append
-  // Otherwise use as raw system prompt
-  if (typeof systemPrompt === 'object') {
-    options.systemPrompt = systemPrompt;
-  } else {
-    options.systemPrompt = systemPrompt;
-  }
-}
-
-if (appendSystemPrompt) {
-  // If systemPrompt is already a preset object, add append
-  if (options.systemPrompt && typeof options.systemPrompt === 'object') {
-    options.systemPrompt.append = appendSystemPrompt;
-  }
-}
-
+if (Object.keys(sdkAgents).length > 0) options.agents = sdkAgents;
 if (maxTurns) options.maxTurns = maxTurns;
-if (allowedTools?.length) options.allowedTools = allowedTools;
-if (disallowedTools?.length) options.disallowedTools = disallowedTools;
-if (resume) options.resume = resume;
+if (maxBudgetUsd) options.maxBudgetUsd = maxBudgetUsd;
 if (model) options.model = model;
 if (settingSources) options.settingSources = settingSources;
+if (resume) options.resume = resume;
+if (includePartialMessages) options.includePartialMessages = true;
+if (mcpServers && Object.keys(mcpServers).length > 0) options.mcpServers = mcpServers;
+if (hooks && Object.keys(hooks).length > 0) options.hooks = hooks;
 
-// AbortController for graceful shutdown
-const ac = new AbortController();
-options.abortController = ac;
+// --- Listen for control commands on stdin ---
 
 process.on('SIGTERM', () => ac.abort());
 process.on('SIGINT', () => ac.abort());
 
-// Read stdin for abort signal from Tauri
-process.stdin.on('data', (chunk) => {
-  const text = chunk.toString().trim();
-  if (text === '__ABORT__') {
-    ac.abort();
+rl.on('line', (line) => {
+  try {
+    const cmd = JSON.parse(line);
+    if (cmd.cmd === 'abort') {
+      ac.abort();
+    }
+    // Future: handle 'interrupt', 'setModel', etc.
+  } catch {
+    // Non-JSON line — ignore
   }
 });
-process.stdin.resume();
+
+// --- Run query and stream output ---
 
 try {
   const q = query({ prompt, options });
 
   for await (const message of q) {
-    const line = JSON.stringify(message);
-    process.stdout.write(line + '\n');
+    process.stdout.write(JSON.stringify(message) + '\n');
   }
 } catch (err) {
   const errMsg = err instanceof Error ? err.message : String(err);
-  // Don't fail on abort
   if (errMsg.includes('abort')) {
     process.exit(0);
   }
   process.stderr.write(`sdk-runner error: ${errMsg}\n`);
-  process.exit(1);
+  process.exit(2);
 }
