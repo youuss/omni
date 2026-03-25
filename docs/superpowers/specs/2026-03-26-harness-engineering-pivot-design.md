@@ -48,6 +48,12 @@ interface AgentNodeConfig {
     promptExtra?: string
     permissionMode?: PermissionMode
   }
+  // 动态路由（层级模式）：agent 输出决定激活哪些下游节点
+  routing?: {
+    outputKey: string              // agent 输出中包含路由决策的 slot 名
+    branches: Record<string, string>  // 决策值 → nodeId
+    defaultBranch?: string         // 无匹配时的默认 nodeId
+  }
 }
 
 interface SlotDef {
@@ -56,6 +62,19 @@ interface SlotDef {
   filePattern?: string        // 如 "*.md", "src/**/*.ts"
 }
 ```
+
+### 2.1.1 编排模式
+
+四种通过 agent/condition/gate 节点组合实现的编排模式：
+
+| 模式 | 画布形态 | 实现方式 |
+|------|----------|----------|
+| **接力模式** | A → B → C | 线性 agent 链，上下文自动传递 |
+| **路由模式** | A → Condition → B / C | Condition 节点按静态表达式分支 |
+| **层级模式** | Orchestrator → X / Y / Z | Agent 节点带 `routing` 配置，运行时动态决定激活哪些下游 |
+| **自由网络模式** | 任意拓扑 | 任意 DAG，无依赖的节点并行执行 |
+
+**层级模式执行流程**：Orchestrator agent 执行 → 引擎读取 `outputs[routing.outputKey]` → 匹配 `routing.branches` → 激活对应下游节点，其余 skip。
 
 ### 2.2 Condition 节点
 

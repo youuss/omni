@@ -113,6 +113,12 @@ export interface AgentNodeConfig {
     promptExtra?: string;
     permissionMode?: PermissionMode;
   };
+  // Dynamic routing (hierarchical pattern): agent output determines downstream activation
+  routing?: {
+    outputKey: string;
+    branches: Record<string, string>; // value → nodeId
+    defaultBranch?: string;
+  };
 }
 
 export interface ConditionNodeConfig {
@@ -1156,7 +1162,12 @@ export class StateMachine {
             exitCode: code,
             logFile: `logs/${node.id}.${runtime.attempt}.jsonl`,
           }));
-          this.advanceDownstream(node.id);
+          // Dynamic routing (hierarchical pattern)
+          if (node.agent?.routing) {
+            this.applyDynamicRouting(node, context);
+          } else {
+            this.advanceDownstream(node.id);
+          }
         }
       },
       model: node.agent?.overrides?.model || harness.defaults?.model,
@@ -1371,6 +1382,32 @@ export class StateMachine {
         if (targetState && targetState.status === 'pending') {
           this.setNodeStatus(targetId, 'ready');
         }
+      }
+    }
+  }
+
+  /**
+   * Dynamic routing (hierarchical pattern): agent output determines which downstream nodes to activate.
+   * Unmatched downstream nodes are skipped.
+   */
+  private applyDynamicRouting(node: HarnessNode, context: NodeContext): void {
+    const routing = node.agent?.routing;
+    if (!routing) return;
+
+    const decision = context.outputs[routing.outputKey] || '';
+    const selectedNodeId = routing.branches[decision] || routing.defaultBranch;
+
+    // Find all downstream nodes
+    const { harness } = this.opts;
+    const downstream = harness.connections
+      .filter((c) => c.sourceNodeId === node.id)
+      .map((c) => c.targetNodeId);
+
+    for (const targetId of downstream) {
+      if (targetId === selectedNodeId) {
+        this.setNodeStatus(targetId, 'ready');
+      } else {
+        this.setNodeStatus(targetId, 'skipped');
       }
     }
   }
