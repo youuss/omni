@@ -30,7 +30,7 @@ import { useOutputStore } from '../../stores/outputStore';
 import { useHarnessStore } from '../../stores/harnessStore';
 import { ensureAgentConfigs } from '../../services/claude/agent-config-service';
 import * as runService from '../../services/run-service';
-import { useRunFiles } from './useRunFiles';
+import { InputPanel } from './InputPanel';
 import { useHarnessRunner } from './useHarnessRunner';
 import WorkspaceHeader from './WorkspaceHeader';
 import HarnessCanvas from './HarnessCanvas';
@@ -73,12 +73,12 @@ export default function WorkspacePage() {
   const [outputOpen, setOutputOpen] = useState(false);
   const [outputHeight, setOutputHeight] = useState(200);
 
-  const runFiles = useRunFiles(currentProject?.path);
+  const [harnessInputs, setHarnessInputs] = useState<Record<string, string>>({});
 
   const harness = useHarnessRunner({
     projectPath: currentProject?.path,
     runId: currentRunId,
-    onFilesChanged: runFiles.loadFiles,
+    onFilesChanged: async () => {},
     onRunsChanged: loadRuns,
   });
 
@@ -140,9 +140,8 @@ export default function WorkspacePage() {
       clearOutput();
       const meta = await runService.readRunMeta(currentProject.path, runId);
       await loadHarness(currentProject.path, meta?.harnessId);
-      await runFiles.loadFiles(runId);
     },
-    [currentProject, startRun, clearOutput, loadHarness, runFiles.loadFiles]
+    [currentProject, startRun, clearOutput, loadHarness]
   );
 
   const handleCreateRun = useCallback(
@@ -157,11 +156,10 @@ export default function WorkspacePage() {
         await loadRuns();
         startRun(runId);
         await loadHarness(currentProject.path, harnessId);
-        await runFiles.loadFiles(runId);
         toast.success('Run created');
       } catch (e) { toast.error(`Create failed: ${e}`); }
     },
-    [currentProject, startRun, loadHarness, runFiles.loadFiles, loadRuns]
+    [currentProject, startRun, loadHarness, loadRuns]
   );
 
   const handleDeletedRun = useCallback(
@@ -177,11 +175,10 @@ export default function WorkspacePage() {
     try {
       await runService.archiveRun(currentProject.path, currentRunId);
       resetRun();
-      runFiles.clearFiles();
       await loadRuns();
       toast.success('Archived');
     } catch (e) { toast.error(`Archive failed: ${e}`); }
-  }, [currentProject, currentRunId, resetRun, runFiles.clearFiles, loadRuns]);
+  }, [currentProject, currentRunId, resetRun, loadRuns]);
 
   const handleAbort = useCallback(() => {
     harness.abort();
@@ -222,7 +219,7 @@ export default function WorkspacePage() {
           harnessReady={harnessReady}
           onSelectRun={handleSelectRun}
           onCreateRun={() => setCreateModalOpen(true)}
-          onRunHarness={harness.runHarness}
+          onRunHarness={() => harness.runHarness(harnessInputs)}
           onAbort={handleAbort}
           onArchive={handleArchive}
         />
@@ -241,7 +238,7 @@ export default function WorkspacePage() {
               projectPath={currentProject.path}
               isRunning={anyRunning}
               harnessReady={harnessReady}
-              onRunHarness={harness.runHarness}
+              onRunHarness={() => harness.runHarness(harnessInputs)}
               onAbort={handleAbort}
             />
           )}
@@ -320,6 +317,18 @@ export default function WorkspacePage() {
             </div>
           )}
         </div>
+
+        {/* Input Panel */}
+        {currentHarness?.inputs && currentHarness.inputs.length > 0 && currentRunId && !anyRunning && (
+          <div className="shrink-0 h-[180px] border-t border-border/40">
+            <InputPanel
+              inputs={currentHarness.inputs}
+              values={harnessInputs}
+              onChange={(name, value) => setHarnessInputs((prev) => ({ ...prev, [name]: value }))}
+              isRunning={anyRunning}
+            />
+          </div>
+        )}
 
         {/* Bottom Output Panel */}
         <div

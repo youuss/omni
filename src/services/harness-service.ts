@@ -65,6 +65,83 @@ export function getDefaultHarness(): HarnessDefinition {
   };
 }
 
+// === Built-in Templates ===
+
+export function getBuiltinHarnessTemplates(): HarnessDefinition[] {
+  return [developTemplate(), fixTemplate(), reviewTemplate()];
+}
+
+function developTemplate(): HarnessDefinition {
+  return {
+    id: 'builtin-develop',
+    name: 'Develop',
+    description: 'Plan → Code (with build constraint) → Review',
+    builtin: true,
+    nodes: [
+      { id: 'planner', type: 'agent', position: { x: 100, y: 200 }, agent: { agentPreset: 'planner' } },
+      {
+        id: 'coder', type: 'agent', position: { x: 400, y: 200 },
+        agent: {
+          agentPreset: 'coder',
+          constraints: [{ name: 'build-pass', check: { type: 'shell', command: 'npm run build' }, onFail: { type: 'retry' }, maxRetries: 3 }],
+        },
+      },
+      { id: 'reviewer', type: 'agent', position: { x: 700, y: 200 }, agent: { agentPreset: 'reviewer' } },
+    ],
+    connections: [
+      { id: 'c1', sourceNodeId: 'planner', targetNodeId: 'coder' },
+      { id: 'c2', sourceNodeId: 'coder', targetNodeId: 'reviewer' },
+    ],
+    failureRoutes: [],
+    inputs: [{ name: 'task', description: 'Feature or task description', required: true }],
+  };
+}
+
+function fixTemplate(): HarnessDefinition {
+  return {
+    id: 'builtin-fix',
+    name: 'Fix',
+    description: 'Diagnose → Fix (with build+test constraints)',
+    builtin: true,
+    nodes: [
+      { id: 'diagnostor', type: 'agent', position: { x: 100, y: 200 }, agent: { agentId: 'Analyzer' } },
+      {
+        id: 'fixer', type: 'agent', position: { x: 400, y: 200 },
+        agent: {
+          agentPreset: 'coder',
+          constraints: [
+            { name: 'build-pass', check: { type: 'shell', command: 'npm run build' }, onFail: { type: 'retry' }, maxRetries: 3 },
+            { name: 'tests-pass', check: { type: 'shell', command: 'npm test' }, onFail: { type: 'retry' }, maxRetries: 2 },
+          ],
+        },
+      },
+    ],
+    connections: [{ id: 'c1', sourceNodeId: 'diagnostor', targetNodeId: 'fixer' }],
+    failureRoutes: [],
+    inputs: [{ name: 'bugReport', description: 'Bug description or error log', required: true }],
+  };
+}
+
+function reviewTemplate(): HarnessDefinition {
+  return {
+    id: 'builtin-review',
+    name: 'Review',
+    description: 'Analyze → Review → Gate (human approval)',
+    builtin: true,
+    nodes: [
+      { id: 'analyzer', type: 'agent', position: { x: 100, y: 200 }, agent: { agentId: 'Analyzer' } },
+      { id: 'reviewer', type: 'agent', position: { x: 400, y: 200 }, agent: { agentPreset: 'reviewer' } },
+      { id: 'approval', type: 'gate', position: { x: 700, y: 200 }, gate: { gateMessage: 'Review the analysis and review report before approving' } },
+    ],
+    connections: [
+      { id: 'c1', sourceNodeId: 'analyzer', targetNodeId: 'reviewer' },
+      { id: 'c2', sourceNodeId: 'reviewer', targetNodeId: 'approval' },
+    ],
+    failureRoutes: [],
+    inputs: [{ name: 'codeContext', description: 'Code or PR to review', required: true }],
+  };
+}
+
 export function topoSort(
   nodes: { id: string }[],
   connections: HarnessConnection[]

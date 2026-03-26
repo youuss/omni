@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import type { ProjectInfo } from '../../types';
 import type { RunInfo } from '../../types/run';
+import { useRunStore, type ExecutionMode } from '../../stores/runStore';
 
 interface WorkspaceHeaderProps {
   project: ProjectInfo;
@@ -56,6 +57,8 @@ export default function WorkspaceHeader({
   onAbort,
   onArchive,
 }: WorkspaceHeaderProps) {
+  const { executionMode, setExecutionMode } = useRunStore();
+
   return (
     <div className="flex items-center gap-3 px-5 h-12 border-b border-border/40 glass shrink-0">
       <div className="flex items-center gap-2 min-w-0">
@@ -122,15 +125,27 @@ export default function WorkspaceHeader({
               Abort
             </Button>
           ) : (
-            <Button
-              size="xs"
-              className="gap-1 h-7 text-[11px]"
-              disabled={!harnessReady}
-              onClick={onRunHarness}
-            >
-              <Play className="w-3 h-3" />
-              Execute
-            </Button>
+            <>
+              <select
+                value={executionMode}
+                onChange={(e) => setExecutionMode(e.target.value as ExecutionMode)}
+                className="text-[11px] bg-transparent border border-white/10 rounded px-2 h-7"
+                disabled={isRunning}
+              >
+                <option value="all">Run All</option>
+                <option value="fromNode">From Node</option>
+                <option value="step">Step</option>
+              </select>
+              <Button
+                size="xs"
+                className="gap-1 h-7 text-[11px]"
+                disabled={!harnessReady}
+                onClick={onRunHarness}
+              >
+                <Play className="w-3 h-3" />
+                Execute
+              </Button>
+            </>
           )}
 
           <AlertDialog>
