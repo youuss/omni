@@ -158,4 +158,14 @@ export interface RunRequest {
   includePartialMessages?: boolean;
   mcpServers?: Record<string, McpServerConfig>;
   hooks?: HooksConfig;
+  constraintContext?: {
+    failure?: {
+      constraintName: string;
+      command?: string;
+      exitCode?: number;
+      stdout?: string;
+      stderr?: string;
+    };
+    upstreamOutputs?: Record<string, string>;
+  };
 }
