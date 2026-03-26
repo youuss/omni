@@ -114,7 +114,7 @@ pub struct RunInfo {
     #[serde(default)]
     pub state: String,
     pub created_at: Option<String>,
-    pub input_files: Vec<String>,
+    pub log_files: Vec<String>,
     pub output_files: Vec<String>,
 }
 
@@ -145,7 +145,7 @@ pub fn list_active_runs(project_path: String) -> Result<Vec<RunInfo>, String> {
             continue;
         }
         let id = entry.file_name().to_string_lossy().into_owned();
-        let input_files = read_dir_files(&path.join("inputs"))?;
+        let log_files = read_dir_files(&path.join("logs"))?;
         let output_files = read_dir_files(&path.join("outputs"))?;
 
         // Read run.json metadata if available
@@ -180,7 +180,7 @@ pub fn list_active_runs(project_path: String) -> Result<Vec<RunInfo>, String> {
             harness_id,
             state,
             created_at,
-            input_files,
+            log_files,
             output_files,
         });
     }
@@ -190,7 +190,7 @@ pub fn list_active_runs(project_path: String) -> Result<Vec<RunInfo>, String> {
 #[tauri::command]
 pub fn create_run(project_path: String, run_id: String) -> Result<(), String> {
     let run_dir = runs_dir(&project_path).join(&run_id);
-    fs::create_dir_all(run_dir.join("inputs")).map_err(|e| e.to_string())?;
+    fs::create_dir_all(run_dir.join("logs")).map_err(|e| e.to_string())?;
     fs::create_dir_all(run_dir.join("outputs")).map_err(|e| e.to_string())?;
 
     // Write initial run.json
@@ -278,7 +278,7 @@ pub fn list_archived_runs(project_path: String) -> Result<Vec<ArchiveInfo>, Stri
 
         // Collect all files recursively from inputs/ and outputs/
         let mut files = Vec::new();
-        for sub in &["inputs", "outputs"] {
+        for sub in &["logs", "outputs"] {
             files.extend(read_dir_files(&path.join(sub))?);
         }
         // Also include run.json if present

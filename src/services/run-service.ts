@@ -9,7 +9,7 @@ export async function listActiveRuns(
     harness_id: string;
     state: string;
     created_at?: string;
-    input_files: string[];
+    log_files: string[];
     output_files: string[];
   }>>('list_active_runs', { projectPath });
 
@@ -18,7 +18,7 @@ export async function listActiveRuns(
     harnessId: r.harness_id,
     state: r.state as RunInfo['state'],
     createdAt: r.created_at,
-    inputFiles: r.input_files,
+    logFiles: r.log_files,
     outputFiles: r.output_files,
   }));
 }

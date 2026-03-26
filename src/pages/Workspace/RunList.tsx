@@ -67,11 +67,11 @@ export default function RunList({
                 >
                   {run.id}
                 </span>
-                {(run.inputFiles.length > 0 || run.outputFiles.length > 0) && (
+                {(run.logFiles.length > 0 || run.outputFiles.length > 0) && (
                   <div className="flex gap-1 flex-wrap mt-1.5">
-                    {run.inputFiles.length > 0 && (
+                    {run.logFiles.length > 0 && (
                       <Badge variant="secondary" className="text-[9px] h-4 px-1.5">
-                        {run.inputFiles.length} inputs
+                        {run.logFiles.length} logs
                       </Badge>
                     )}
                     {run.outputFiles.length > 0 && (

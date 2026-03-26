@@ -6,7 +6,7 @@ export interface RunInfo {
   state: RunState;
   createdAt?: string;
   updatedAt?: string;
-  inputFiles: string[];
+  logFiles: string[];
   outputFiles: string[];
 }
 
