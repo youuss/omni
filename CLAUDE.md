@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-Omni Fabric is a Tauri v2 desktop app for spec-driven AI development. Users define agent harnesses (DAGs of AI agents), configure them visually on a ReactFlow canvas, and execute them against the Claude Agent SDK. The app streams real-time output from agent runs.
+Omni Fabric is a Tauri v2 desktop app for harness-driven AI development. Users define agent harnesses (DAGs of AI agents), configure them visually on a ReactFlow canvas, and execute them via an event-driven state machine against the Claude Agent SDK. Harnesses support parallel execution, constraint-based verification (retry/route/abort), conditional branching, gate nodes (human approval), and dynamic routing for hierarchical orchestration.
 
 ## Tech Stack
 
@@ -28,41 +28,60 @@ No test framework is configured. Type-check via `npm run vite:build`.
 
 ## Architecture
 
-### Execution Flow (Fat Sidecar Pattern)
+### Execution Flow (Event-Driven State Machine)
 
 ```
-UI (useHarnessRunner) → HarnessExecutor.execute()
-  → topoSort nodes by DAG edges
-  → For each node: runAgent() (claude-runner.ts)
-    → Tauri Shell spawns: node sdk-runner.mjs
-    → RunRequest JSON written to stdin (first line)
-    → sdk-runner loads agent prompts + configs from disk
-    → Calls Claude Agent SDK query()
-    → Streams SDKMessage as JSONL to stdout
-    → claude-runner parses lines, emits to callbacks
-    → outputStore accumulates for terminal display
+UI (useHarnessRunner) → HarnessExecutor → StateMachine.execute()
+  → Initialize node states (pending → ready for entry nodes)
+  → Event loop: dispatch all ready nodes in parallel
+    → Agent nodes: assemblePrompt() → runAgent() → checkConstraints()
+    → Condition nodes: evaluate expression → activate selected branch
+    → Gate nodes: pause for user approval → resume on callback
+  → Constraint failures: retry (re-run node) / route (activate diagnostic agent) / abort
+  → advanceDownstream() when node completes → set successors to ready
+  → JSONL logging: per-node logs + harness-level execution log
 ```
 
 Control: `{"cmd":"abort"}` sent via stdin to stop a running agent.
 
+### Node Types
+
+- **Agent** (`type: 'agent'`): Runs a Claude agent with optional presets (planner/coder/verifier/reviewer), constraints, slot bindings, and dynamic routing
+- **Condition** (`type: 'condition'`): Evaluates an expression against upstream contexts, activates one branch
+- **Gate** (`type: 'gate'`): Pauses execution for human approval
+
+### Orchestration Patterns
+
+1. **Relay (接力)**: Linear A → B → C with auto-inherited context
+2. **Router (路由)**: Condition node evaluates and branches to different agents
+3. **Hierarchical (层级)**: Supervisor agent uses `routing` config to dynamically select downstream
+4. **Free Network (自由网络)**: Arbitrary DAG with parallel paths and merge points
+
 ### Key Layers
+
+**Engine** (`src/services/engine/`) — Execution core:
+- `state-machine.ts` — Event-driven state machine with parallel dispatch, constraint checking, dynamic routing
+- `constraint-checker.ts` — Shell, file_contains, and expression constraint checks
+- `context-resolver.ts` — Upstream context inheritance with contextFilter and slot binding
+- `prompt-assembler.ts` — Assembles agent prompts from template + extensions + context + constraints
+- `logger.ts` — JSONL event logging (per-node and harness-level)
 
 **Services** (`src/services/`) — Business logic, Tauri IPC calls:
 - `claude/claude-runner.ts` — Spawns sdk-runner, manages stdin/stdout protocol
 - `claude/stream-parser.ts` — Parses JSONL SDKMessage lines
-- `claude/session-store.ts` — Session resume tracking
-- `harness-executor.ts` — DAG topological sort + sequential node execution
+- `harness-executor.ts` — Thin wrapper over StateMachine, adapts callbacks
 - `harness-service.ts`, `run-service.ts`, `agent-service.ts`, `extension-service.ts`, `domain-service.ts` — CRUD via Tauri invoke
 
 **Stores** (`src/stores/`) — Zustand state:
-- `harnessStore` — Graph (nodes/connections), templates, runtime status
-- `runStore` — Current run state
+- `harnessStore` — Graph (nodes/connections), failureRoutes, templates, runtime status
+- `runStore` — Current run state, execution mode (all/fromNode/step)
 - `projectStore` — Project list
-- `outputStore` — Terminal output with streaming partial text
+- `outputStore` — Terminal output with per-node tracking
 
 **Types** (`src/types/`) — Shared TypeScript definitions:
 - `claude.ts` — RunRequest, SDKMessage, AgentRunHandle, protocol types
-- `harness.ts` — Node, connection, agent definition types
+- `harness.ts` — HarnessNode (agent/condition/gate), AgentNodeConfig, NodeConstraint, ConstraintCheck, OnFailAction, HarnessDefinition
+- `engine.ts` — NodeContext, ConstraintFailure, LogEvent, ExecutionLogEvent, ExecutionState, StateMachineCallbacks
 
 **Rust Backend** (`src-tauri/src/commands/`) — Filesystem operations:
 - `project.rs`, `harness.rs`, `agents.rs`, `extensions.rs`, `file.rs`
@@ -81,6 +100,10 @@ Projects managed by Omni Fabric follow this structure on disk:
   .harness/extensions/{id}/prompt.md # Reusable prompt modules
   .harness/templates/               # Saved harness templates
   .harness/runs/{runId}/            # Active run data
+    logs/{nodeId}.{attempt}.jsonl   # Per-node JSONL logs
+    execution.jsonl                 # Harness-level execution log
+    state.json                      # Persisted execution state
+    outputs/                        # Agent output files
   .harness/archive/                 # Archived runs
   .harness/domains/{slug}/          # Domain knowledge modules
 ```
