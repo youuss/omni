@@ -2,18 +2,18 @@ import { create } from 'zustand';
 import type {
   HarnessDefinition,
   HarnessNode,
+  HarnessNodeType,
   HarnessConnection,
   NodeStatus,
   NodeRuntimeState,
-  FileTab,
   HarnessTemplateInfo,
   AgentDefinition,
+  FailureRoute,
 } from '../types/harness';
 import {
   saveProjectHarness,
   loadHarnessForTemplate,
   ensureDefaultHarness,
-  deriveFileTabs,
 } from '../services/harness-service';
 import {
   listAllTemplates,
@@ -29,7 +29,6 @@ interface HarnessState {
   nodeStates: Record<string, NodeRuntimeState>;
   harnessRunning: boolean;
   dirty: boolean;
-  tabs: FileTab[];
   selectedNodeId: string | null;
 
   selectNode: (nodeId: string | null) => void;
@@ -37,14 +36,15 @@ interface HarnessState {
   loadHarness: (projectPath: string, templateId?: string) => Promise<void>;
   saveCurrent: (projectPath: string) => Promise<void>;
   saveAsTemplate: (projectPath: string, templateId: string, name: string) => Promise<void>;
-  recomputeTabs: (runId: string) => void;
 
-  addNode: (agentId: string, position: { x: number; y: number }) => void;
+  addNode: (agentId: string, position: { x: number; y: number }, nodeType?: HarnessNodeType) => void;
   removeNode: (nodeId: string) => void;
   updateNodePosition: (nodeId: string, position: { x: number; y: number }) => void;
-  updateNodeConstraints: (nodeId: string, constraints: HarnessNode['constraints']) => void;
+  updateNodeConfig: (nodeId: string, config: Partial<HarnessNode>) => void;
   addConnection: (conn: HarnessConnection) => void;
   removeConnection: (connId: string) => void;
+  addFailureRoute: (route: FailureRoute) => void;
+  removeFailureRoute: (fromNodeId: string, constraintName: string) => void;
 
   setNodeStatus: (nodeId: string, status: NodeStatus, error?: string) => void;
   setNodeOutputs: (nodeId: string, outputs: Record<string, string>) => void;
@@ -57,7 +57,7 @@ let nodeCounter = 0;
 function initNodeStates(nodes: HarnessNode[]): Record<string, NodeRuntimeState> {
   const states: Record<string, NodeRuntimeState> = {};
   for (const node of nodes) {
-    states[node.id] = { status: 'idle', outputs: {} };
+    states[node.id] = { status: 'pending', attempt: 0, outputs: {} };
   }
   return states;
 }
@@ -70,7 +70,6 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
   nodeStates: {},
   harnessRunning: false,
   dirty: false,
-  tabs: [],
   selectedNodeId: null,
 
   selectNode: (nodeId: string | null) => set({ selectedNodeId: nodeId }),
@@ -112,21 +111,18 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
     set({ templates });
   },
 
-  recomputeTabs: (runId: string) => {
-    const { currentHarness, agents } = get();
-    if (!currentHarness || !runId) {
-      set({ tabs: [] });
-      return;
-    }
-    const tabs = deriveFileTabs(currentHarness, agents, runId);
-    set({ tabs });
-  },
-
-  addNode: (agentId: string, position: { x: number; y: number }) => {
+  addNode: (agentId: string, position: { x: number; y: number }, nodeType: HarnessNodeType = 'agent') => {
     const harness = get().currentHarness;
     if (!harness) return;
     const id = `n-${agentId.toLowerCase()}-${++nodeCounter}`;
-    const node: HarnessNode = { id, agentId, position };
+    const node: HarnessNode = {
+      id,
+      type: nodeType,
+      position,
+      ...(nodeType === 'agent' && { agent: { agentId } }),
+      ...(nodeType === 'condition' && { condition: { expression: '', branches: {} } }),
+      ...(nodeType === 'gate' && { gate: {} }),
+    };
     set({
       currentHarness: {
         ...harness,
@@ -134,7 +130,7 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
       },
       nodeStates: {
         ...get().nodeStates,
-        [id]: { status: 'idle', outputs: {} },
+        [id]: { status: 'pending', attempt: 0, outputs: {} },
       },
       dirty: true,
     });
@@ -150,6 +146,9 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
         nodes: harness.nodes.filter((n) => n.id !== nodeId),
         connections: harness.connections.filter(
           (c) => c.sourceNodeId !== nodeId && c.targetNodeId !== nodeId
+        ),
+        failureRoutes: harness.failureRoutes.filter(
+          (r) => r.fromNodeId !== nodeId && r.toNodeId !== nodeId
         ),
       },
       nodeStates: restStates,
@@ -171,14 +170,14 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
     });
   },
 
-  updateNodeConstraints: (nodeId, constraints) => {
+  updateNodeConfig: (nodeId: string, config: Partial<HarnessNode>) => {
     const harness = get().currentHarness;
     if (!harness) return;
     set({
       currentHarness: {
         ...harness,
         nodes: harness.nodes.map((n) =>
-          n.id === nodeId ? { ...n, constraints } : n
+          n.id === nodeId ? { ...n, ...config } : n
         ),
       },
       dirty: true,
@@ -210,6 +209,32 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
       currentHarness: {
         ...harness,
         connections: harness.connections.filter((c) => c.id !== connId),
+      },
+      dirty: true,
+    });
+  },
+
+  addFailureRoute: (route: FailureRoute) => {
+    const harness = get().currentHarness;
+    if (!harness) return;
+    set({
+      currentHarness: {
+        ...harness,
+        failureRoutes: [...harness.failureRoutes, route],
+      },
+      dirty: true,
+    });
+  },
+
+  removeFailureRoute: (fromNodeId: string, constraintName: string) => {
+    const harness = get().currentHarness;
+    if (!harness) return;
+    set({
+      currentHarness: {
+        ...harness,
+        failureRoutes: harness.failureRoutes.filter(
+          (r) => !(r.fromNodeId === fromNodeId && r.constraintName === constraintName)
+        ),
       },
       dirty: true,
     });

@@ -4,7 +4,7 @@ import { checkClaudeAvailable } from '../../services/claude/claude-runner';
 import { HarnessExecutor } from '../../services/harness-executor';
 import { useHarnessStore } from '../../stores/harnessStore';
 import { useOutputStore } from '../../stores/outputStore';
-import type { AgentDefinition } from '../../types/harness';
+import { useRunStore } from '../../stores/runStore';
 
 interface UseHarnessRunnerOptions {
   projectPath: string | undefined;
@@ -26,6 +26,7 @@ export function useHarnessRunner(options: UseHarnessRunnerOptions) {
   } = useHarnessStore();
 
   const { appendEvent, appendLine, clear: clearOutput } = useOutputStore();
+  const { executionMode, startFromNodeId, setRunning, setState } = useRunStore();
   const [executor, setExecutor] = useState<HarnessExecutor | null>(null);
   const [claudeAvailable, setClaudeAvailable] = useState<boolean | null>(null);
 
@@ -34,7 +35,7 @@ export function useHarnessRunner(options: UseHarnessRunnerOptions) {
     setClaudeAvailable(result.ok);
   }, []);
 
-  const runHarness = useCallback(async () => {
+  const runHarness = useCallback(async (harnessInputs?: Record<string, string>) => {
     if (!projectPath || !runId || !currentHarness) return;
     if (claudeAvailable === false) {
       toast.error('Claude CLI not installed. Run: npm install -g @anthropic-ai/claude-code');
@@ -45,58 +46,42 @@ export function useHarnessRunner(options: UseHarnessRunnerOptions) {
       return;
     }
 
-    const agentMap = new Map<string, AgentDefinition>();
-    for (const a of agents) {
-      agentMap.set(a.id, a);
-    }
-
-    const missingAgents = currentHarness.nodes
-      .filter((n) => !agentMap.has(n.agentId))
-      .map((n) => n.agentId);
-
-    if (missingAgents.length > 0) {
-      toast.error(`Agents not found: ${missingAgents.join(', ')}`);
-      return;
-    }
-
     setHarnessRunning(true);
+    setRunning(true);
+    setState('running');
     clearOutput();
     appendLine('system', `> Executing harness "${currentHarness.name}" (${currentHarness.nodes.length} nodes)`);
 
-    const exec = new HarnessExecutor(
-      currentHarness,
-      agentMap,
-      { projectPath, runId },
-      {
+    const exec = new HarnessExecutor({
+      projectPath,
+      runId,
+      harness: currentHarness,
+      agents,
+      callbacks: {
         onNodeStatusChange: (nodeId, status, error) => {
           setNodeStatus(nodeId, status, error);
-          const node = currentHarness.nodes.find((n) => n.id === nodeId);
-          const agentName = node ? agentMap.get(node.agentId)?.name ?? node.agentId : nodeId;
-
-          if (status === 'running') {
-            appendLine('system', `> Running ${agentName}`);
-          } else if (status === 'success') {
-            appendLine('system', `+ ${agentName} completed`);
-          } else if (status === 'failure') {
-            appendLine('error', `x ${agentName} failed${error ? `: ${error}` : ''}`);
-          } else if (status === 'skipped') {
-            appendLine('system', `- ${agentName} skipped`);
-          }
+          appendLine('system', `[${nodeId}] ${status}${error ? ': ' + error : ''}`, nodeId);
         },
         onNodeOutputs: (nodeId, outputs) => {
           setNodeOutputs(nodeId, outputs);
         },
-        onEvent: (_nodeId, event) => {
-          appendEvent(event);
+        onEvent: (nodeId, event) => {
+          appendEvent(event, nodeId);
         },
-        onStatus: (_nodeId, text) => {
-          appendLine('system', text);
+        onGateWait: async (_nodeId, _message) => {
+          // TODO: connect to a UI dialog
+          return true;
         },
-        onError: (_nodeId, text) => {
-          appendLine('error', text);
+        onStatus: (nodeId, text) => {
+          appendLine('system', `[${nodeId}] ${text}`, nodeId);
+        },
+        onError: (nodeId, text) => {
+          appendLine('error', `[${nodeId}] ${text}`, nodeId);
         },
         onHarnessDone: async (success) => {
           setHarnessRunning(false);
+          setRunning(false);
+          setState(success ? 'completed' : 'failed');
           setExecutor(null);
           appendLine(
             'system',
@@ -109,8 +94,11 @@ export function useHarnessRunner(options: UseHarnessRunnerOptions) {
             await onRunsChanged();
           }
         },
-      }
-    );
+      },
+      harnessInputs,
+      startFromNodeId: executionMode === 'fromNode' ? startFromNodeId ?? undefined : undefined,
+      stepMode: executionMode === 'step',
+    });
 
     setExecutor(exec);
 
@@ -118,21 +106,25 @@ export function useHarnessRunner(options: UseHarnessRunnerOptions) {
       await exec.execute();
     } catch (e) {
       setHarnessRunning(false);
+      setRunning(false);
+      setState('failed');
       setExecutor(null);
       appendLine('error', `Harness execution error: ${e}`);
     }
   }, [
     projectPath, runId, currentHarness, agents, claudeAvailable,
-    setHarnessRunning, clearOutput, appendLine, appendEvent,
+    executionMode, startFromNodeId,
+    setHarnessRunning, setRunning, setState, clearOutput, appendLine, appendEvent,
     setNodeStatus, setNodeOutputs, onFilesChanged, onRunsChanged,
   ]);
 
   const abort = useCallback(() => {
     executor?.abort();
     setHarnessRunning(false);
+    setRunning(false);
     appendLine('system', '! Harness aborted');
     setExecutor(null);
-  }, [executor, setHarnessRunning, appendLine]);
+  }, [executor, setHarnessRunning, setRunning, appendLine]);
 
   return {
     claudeAvailable,

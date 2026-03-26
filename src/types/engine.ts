@@ -28,51 +28,48 @@ export interface ConstraintFailure {
 
 export type LogEvent =
   | { type: 'node_start'; nodeId: string; attempt: number; ts: number }
-  | { type: 'node_end'; nodeId: string; status: NodeStatus; ts: number }
-  | { type: 'sdk_message'; nodeId: string; message: SDKMessage; ts: number }
-  | { type: 'context_inject'; nodeId: string; slotKey: string; value: string; ts: number }
-  | { type: 'context_output'; nodeId: string; slotKey: string; value: string; ts: number }
-  | { type: 'constraint_check'; nodeId: string; constraintName: string; passed: boolean; ts: number }
-  | { type: 'constraint_retry'; nodeId: string; constraintName: string; attempt: number; ts: number }
-  | { type: 'constraint_route'; nodeId: string; constraintName: string; targetNodeId: string; ts: number }
-  | { type: 'condition_eval'; nodeId: string; expression: string; result: boolean; ts: number }
-  | { type: 'gate_wait'; nodeId: string; waitingFor: string[]; ts: number }
+  | { type: 'node_end'; nodeId: string; exitCode: number | null; durationMs: number; ts: number }
+  | { type: 'sdk_message'; data: SDKMessage; ts: number }
+  | { type: 'constraint_check'; name: string; passed: boolean; exitCode?: number; stdout?: string; stderr?: string; ts: number }
+  | { type: 'constraint_retry'; attempt: number; reason: string; ts: number }
+  | { type: 'condition_eval'; nodeId: string; expression: string; result: string; branch: string; ts: number }
+  | { type: 'gate_wait'; nodeId: string; message?: string; ts: number }
   | { type: 'gate_resume'; nodeId: string; ts: number }
   | { type: 'error'; nodeId?: string; message: string; ts: number };
 
 // === Execution Log Events ===
 
 export type ExecutionLogEvent =
-  | { type: 'harness_start'; harnessId: string; runId: string; ts: number }
+  | { type: 'harness_start'; harnessId: string; nodes: string[]; ts: number }
   | { type: 'node_dispatch'; nodeId: string; attempt: number; ts: number }
-  | { type: 'node_complete'; nodeId: string; context: NodeContext; ts: number }
+  | { type: 'node_complete'; nodeId: string; exitCode?: number; logFile: string; ts: number }
   | { type: 'node_failed'; nodeId: string; error: string; ts: number }
   | { type: 'node_skipped'; nodeId: string; reason: string; ts: number }
-  | { type: 'constraint_route'; fromNodeId: string; toNodeId: string; constraintName: string; ts: number }
-  | { type: 'condition_branch'; nodeId: string; branch: 'true' | 'false'; targetNodeId?: string; ts: number }
-  | { type: 'harness_end'; harnessId: string; runId: string; status: 'completed' | 'failed' | 'aborted'; ts: number };
+  | { type: 'constraint_route'; fromNode: string; constraint: string; toNode: string; ts: number }
+  | { type: 'condition_branch'; nodeId: string; branch: string; ts: number }
+  | { type: 'harness_end'; success: boolean; durationMs: number; ts: number };
 
 // === Execution State ===
 
 export interface ExecutionState {
   harnessId: string;
   runId: string;
-  nodeStates: Record<string, NodeStatus>;
+  nodeStates: Record<string, { status: NodeStatus; attempt: number; error?: string }>;
   contexts: Record<string, NodeContext>;
-  startedAt: number;
-  updatedAt: number;
+  startedAt: string;
+  updatedAt: string;
 }
 
 // === State Machine Callbacks ===
 
 export interface StateMachineCallbacks {
-  onNodeStatusChange?: (nodeId: string, status: NodeStatus) => void;
-  onNodeContext?: (nodeId: string, context: NodeContext) => void;
-  onSdkEvent?: (nodeId: string, message: SDKMessage) => void;
-  onLogEvent?: (event: LogEvent) => void;
-  onExecutionEvent?: (event: ExecutionLogEvent) => void;
-  onGateWait?: (nodeId: string, waitingFor: string[]) => void;
-  onStatus?: (status: ExecutionState) => void;
-  onError?: (error: Error, nodeId?: string) => void;
-  onDone?: (state: ExecutionState) => void;
+  onNodeStatusChange: (nodeId: string, status: NodeStatus, attempt: number, error?: string) => void;
+  onNodeContext: (nodeId: string, context: NodeContext) => void;
+  onSdkEvent: (nodeId: string, event: SDKMessage) => void;
+  onLogEvent: (event: LogEvent) => void;
+  onExecutionEvent: (event: ExecutionLogEvent) => void;
+  onGateWait: (nodeId: string, message?: string) => Promise<boolean>;
+  onStatus: (nodeId: string, text: string) => void;
+  onError: (nodeId: string, text: string) => void;
+  onDone: (success: boolean) => void;
 }

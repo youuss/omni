@@ -48,25 +48,24 @@ function HarnessCanvasInner({ onNodeClick, onPaneClick }: HarnessCanvasProps) {
     if (!currentHarness) return [];
     const agentMap = new Map(agents.map((a) => [a.id, a]));
     return currentHarness.nodes.map((node) => {
-      const agent = agentMap.get(node.agentId);
+      const agentId = node.agent?.agentId || node.agent?.agentPreset || node.id;
+      const agent = agentMap.get(agentId);
       return {
         id: node.id,
         type: 'agent',
         position: node.position,
         data: {
           agent: agent ?? {
-            id: node.agentId,
-            name: node.agentId,
+            id: agentId,
+            name: agentId,
             description: '',
-            category: 'custom' as const,
-            ports: [],
             promptTemplate: '',
             allowedTools: [],
             maxTurns: 20,
           },
-          status: nodeStates[node.id]?.status ?? 'idle',
+          status: nodeStates[node.id]?.status ?? 'pending',
           error: nodeStates[node.id]?.error,
-          hasOverrides: !!node.constraints,
+          hasOverrides: !!node.agent?.constraints,
         },
       };
     });

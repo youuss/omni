@@ -6,6 +6,7 @@ interface OutputLine {
   type: 'text' | 'tool' | 'error' | 'system';
   content: string;
   timestamp: number;
+  nodeId?: string;
 }
 
 interface OutputState {
@@ -14,15 +15,15 @@ interface OutputState {
   partialText: string;
   isStreaming: boolean;
 
-  appendLine: (type: OutputLine['type'], content: string) => void;
-  appendEvent: (event: SDKMessage) => void;
+  appendLine: (type: OutputLine['type'], content: string, nodeId?: string) => void;
+  appendEvent: (event: SDKMessage, nodeId?: string) => void;
   clear: () => void;
 }
 
 let lineCounter = 0;
 
-function makeLine(type: OutputLine['type'], content: string): OutputLine {
-  return { id: ++lineCounter, type, content, timestamp: Date.now() };
+function makeLine(type: OutputLine['type'], content: string, nodeId?: string): OutputLine {
+  return { id: ++lineCounter, type, content, timestamp: Date.now(), nodeId };
 }
 
 function extractLinesFromMessage(msg: SDKMessage): OutputLine[] {
@@ -96,12 +97,12 @@ export const useOutputStore = create<OutputState>((set) => ({
   partialText: '',
   isStreaming: false,
 
-  appendLine: (type, content) =>
+  appendLine: (type, content, nodeId) =>
     set((state) => ({
-      lines: [...state.lines, makeLine(type, content)],
+      lines: [...state.lines, makeLine(type, content, nodeId)],
     })),
 
-  appendEvent: (event) =>
+  appendEvent: (event, _nodeId) =>
     set((state) => {
       // Handle stream_event for partial message streaming
       if (event.type === 'stream_event') {

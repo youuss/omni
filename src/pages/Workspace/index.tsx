@@ -63,7 +63,7 @@ export default function WorkspacePage() {
   const { clear: clearOutput, lines } = useOutputStore();
   const {
     loadHarness, loadTemplates, harnessRunning, currentHarness,
-    tabs, recomputeTabs, templates, agents, selectedNodeId, selectNode,
+    templates, agents, selectedNodeId, selectNode,
   } = useHarnessStore();
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -73,7 +73,7 @@ export default function WorkspacePage() {
   const [outputOpen, setOutputOpen] = useState(false);
   const [outputHeight, setOutputHeight] = useState(200);
 
-  const runFiles = useRunFiles(currentProject?.path, tabs);
+  const runFiles = useRunFiles(currentProject?.path);
 
   const harness = useHarnessRunner({
     projectPath: currentProject?.path,
@@ -115,12 +115,6 @@ export default function WorkspacePage() {
 
   useEffect(() => { harness.checkClaude(); }, [harness.checkClaude]);
 
-  useEffect(() => {
-    if (currentRunId) {
-      recomputeTabs(currentRunId);
-    }
-  }, [currentRunId, currentHarness, recomputeTabs]);
-
   // When a node is selected, show its detail panel
   useEffect(() => {
     if (selectedNodeId) {
@@ -146,10 +140,9 @@ export default function WorkspacePage() {
       clearOutput();
       const meta = await runService.readRunMeta(currentProject.path, runId);
       await loadHarness(currentProject.path, meta?.harnessId);
-      recomputeTabs(runId);
       await runFiles.loadFiles(runId);
     },
-    [currentProject, startRun, clearOutput, loadHarness, runFiles.loadFiles, recomputeTabs]
+    [currentProject, startRun, clearOutput, loadHarness, runFiles.loadFiles]
   );
 
   const handleCreateRun = useCallback(
@@ -164,12 +157,11 @@ export default function WorkspacePage() {
         await loadRuns();
         startRun(runId);
         await loadHarness(currentProject.path, harnessId);
-        recomputeTabs(runId);
         await runFiles.loadFiles(runId);
         toast.success('Run created');
       } catch (e) { toast.error(`Create failed: ${e}`); }
     },
-    [currentProject, startRun, loadHarness, recomputeTabs, runFiles.loadFiles, loadRuns]
+    [currentProject, startRun, loadHarness, runFiles.loadFiles, loadRuns]
   );
 
   const handleDeletedRun = useCallback(
@@ -204,7 +196,7 @@ export default function WorkspacePage() {
     if (!selectedNodeId || !currentHarness) return undefined;
     const node = currentHarness.nodes.find((n) => n.id === selectedNodeId);
     if (!node) return undefined;
-    return agents.find((a) => a.id === node.agentId);
+    return agents.find((a) => a.id === (node.agent?.agentId || node.agent?.agentPreset || ''));
   }, [selectedNodeId, currentHarness, agents]);
 
   if (!currentProject) {
@@ -288,13 +280,7 @@ export default function WorkspacePage() {
                 <NodeDetailPanel
                   nodeId={selectedNodeId}
                   agent={selectedAgent}
-                  tabs={tabs}
-                  documents={runFiles.documents}
-                  editingTabId={runFiles.editingTabId}
                   isRunning={anyRunning}
-                  onEditingChange={runFiles.setEditingTabId}
-                  onDocumentChange={runFiles.updateDocument}
-                  onSaveDocument={(tabId) => runFiles.saveDocument(tabId)}
                 />
               </div>
             </div>

@@ -39,19 +39,21 @@ const STATUS_CONFIG: Record<
   NodeStatus,
   { icon: React.ElementType; label: string; color: string; bg: string; border: string }
 > = {
-  idle: { icon: Clock, label: 'Ready', color: 'text-muted-foreground/50', bg: '', border: 'border-border/40' },
+  pending: { icon: Clock, label: 'Pending', color: 'text-muted-foreground/50', bg: '', border: 'border-border/40' },
+  ready: { icon: Clock, label: 'Ready', color: 'text-muted-foreground', bg: 'bg-white/10', border: 'border-border/50' },
   waiting: { icon: Clock, label: 'Waiting', color: 'text-muted-foreground', bg: 'bg-white/10', border: 'border-border/50' },
   running: { icon: Loader2, label: 'Running', color: 'text-blue-600', bg: 'bg-blue-50/40', border: 'border-blue-300/50' },
-  success: { icon: Check, label: 'Done', color: 'text-emerald-600', bg: 'bg-emerald-50/40', border: 'border-emerald-300/50' },
-  failure: { icon: AlertTriangle, label: 'Failed', color: 'text-destructive', bg: 'bg-red-50/40', border: 'border-red-300/50' },
+  checking: { icon: Loader2, label: 'Checking', color: 'text-amber-600', bg: 'bg-amber-50/40', border: 'border-amber-300/50' },
+  completed: { icon: Check, label: 'Done', color: 'text-emerald-600', bg: 'bg-emerald-50/40', border: 'border-emerald-300/50' },
+  failed: { icon: AlertTriangle, label: 'Failed', color: 'text-destructive', bg: 'bg-red-50/40', border: 'border-red-300/50' },
   skipped: { icon: SkipForward, label: 'Skipped', color: 'text-muted-foreground/40', bg: 'bg-white/5', border: 'border-border/30' },
 };
 
 function AgentNode({ data, selected }: AgentNodeProps) {
-  const { agent, status = 'idle', error, hasOverrides } = data;
-  const statusConfig = STATUS_CONFIG[status] ?? STATUS_CONFIG.idle;
+  const { agent, status = 'pending', error, hasOverrides } = data;
+  const statusConfig = STATUS_CONFIG[status] ?? STATUS_CONFIG.pending;
   const StatusIcon = statusConfig.icon;
-  const CategoryIcon = CATEGORY_ICONS[agent.category] ?? Bot;
+  const CategoryIcon = CATEGORY_ICONS[agent.builtin ? 'custom' : 'custom'] ?? Bot;
 
   return (
     <div

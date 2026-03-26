@@ -1,17 +1,9 @@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import {
-  Bot, Shield, FileText, Code2, ClipboardCheck, Search, GripVertical,
+  Bot, Shield, GripVertical,
 } from 'lucide-react';
 import type { AgentDefinition } from '../../types/harness';
-
-const CATEGORY_ICONS: Record<string, React.ElementType> = {
-  planner: FileText,
-  implementer: Code2,
-  verifier: ClipboardCheck,
-  reviewer: Search,
-  custom: Bot,
-};
 
 interface AgentPaletteProps {
   agents: AgentDefinition[];
@@ -39,7 +31,7 @@ export default function AgentPalette({ agents }: AgentPaletteProps) {
           Drag to canvas
         </p>
         {agents.map((agent) => {
-          const Icon = agent.builtin ? Shield : (CATEGORY_ICONS[agent.category] ?? Bot);
+          const Icon = agent.builtin ? Shield : Bot;
           return (
             <div
               key={agent.id}
@@ -67,7 +59,7 @@ export default function AgentPalette({ agents }: AgentPaletteProps) {
                     {agent.description}
                   </p>
                 )}
-                <span className="text-[9px] text-muted-foreground/40 mt-1">{agent.category}</span>
+                {agent.builtin && <span className="text-[9px] text-muted-foreground/40 mt-1">built-in</span>}
               </div>
               <GripVertical className="w-3.5 h-3.5 text-muted-foreground/20 group-hover:text-muted-foreground/40 shrink-0" />
             </div>

@@ -85,7 +85,7 @@ export function assemblePrompt(options: AssembleOptions): string {
   const {
     node,
     agent,
-    allNodes: _allNodes,
+    allNodes,
     connections,
     allContexts,
     extensions,
@@ -119,8 +119,8 @@ export function assemblePrompt(options: AssembleOptions): string {
   }
 
   // 4. Upstream context
-  const upstreamContext = resolveContext(node, connections, allContexts);
-  const formattedContext = formatContextForPrompt(upstreamContext);
+  const { inheritedContexts, slotBindings } = resolveContext(node.id, allNodes, connections, allContexts);
+  const formattedContext = formatContextForPrompt(inheritedContexts, slotBindings);
   if (formattedContext.trim()) {
     parts.push(formattedContext);
   }
@@ -131,8 +131,7 @@ export function assemblePrompt(options: AssembleOptions): string {
   }
 
   // 6. Node-level promptExtra
-  const agentConfig = node.config as { overrides?: { promptExtra?: string } };
-  const promptExtra = agentConfig?.overrides?.promptExtra;
+  const promptExtra = node.agent?.overrides?.promptExtra;
   if (promptExtra && promptExtra.trim()) {
     parts.push(promptExtra);
   }

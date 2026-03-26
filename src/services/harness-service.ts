@@ -2,9 +2,6 @@ import { invoke } from '@tauri-apps/api/core';
 import type {
   HarnessDefinition,
   HarnessConnection,
-  AgentDefinition,
-  AgentCategory,
-  FileTab,
 } from '../types/harness';
 import { loadTemplate, DEFAULT_TEMPLATE_ID } from './harness-template-service';
 
@@ -49,18 +46,21 @@ export async function ensureDefaultHarness(
 
 export function getDefaultHarness(): HarnessDefinition {
   return {
-    id: DEFAULT_TEMPLATE_ID,
-    name: 'Plan-Implement-Verify',
-    description: 'Planner → Implementer → Verifier',
-    builtin: true,
+    id: 'default',
+    name: 'Default Harness',
+    description: 'A simple single-agent harness',
     nodes: [
-      { id: 'n-planner', agentId: 'Planner', position: { x: 100, y: 200 } },
-      { id: 'n-impl', agentId: 'Implementer', position: { x: 400, y: 200 } },
-      { id: 'n-verifier', agentId: 'Verifier', position: { x: 700, y: 200 } },
+      {
+        id: 'node-1',
+        type: 'agent',
+        position: { x: 250, y: 200 },
+        agent: { agentPreset: 'coder' },
+      },
     ],
-    connections: [
-      { id: 'e-plan-impl', sourceNodeId: 'n-planner', targetNodeId: 'n-impl' },
-      { id: 'e-impl-verify', sourceNodeId: 'n-impl', targetNodeId: 'n-verifier' },
+    connections: [],
+    failureRoutes: [],
+    inputs: [
+      { name: 'task', description: 'What to work on', required: true },
     ],
   };
 }
@@ -100,91 +100,4 @@ export function topoSort(
   }
 
   return sorted;
-}
-
-// Convention-based file tabs: derive from agent category, no manual port config needed
-const CATEGORY_FILES: Record<AgentCategory, { inputs: { id: string; label: string; path: string }[]; outputs: { id: string; label: string; path: string }[] }> = {
-  planner: {
-    inputs: [
-      { id: 'requirements', label: 'Requirements', path: '.harness/runs/{{runId}}/inputs/requirements.md' },
-    ],
-    outputs: [
-      { id: 'dev-plan', label: 'Dev Plan', path: '.harness/runs/{{runId}}/outputs/dev-plan.md' },
-    ],
-  },
-  implementer: {
-    inputs: [],
-    outputs: [],
-  },
-  verifier: {
-    inputs: [],
-    outputs: [
-      { id: 'verification-report', label: 'Verification Report', path: '.harness/runs/{{runId}}/outputs/verification-report.md' },
-    ],
-  },
-  reviewer: {
-    inputs: [],
-    outputs: [
-      { id: 'review-report', label: 'Review Report', path: '.harness/runs/{{runId}}/outputs/review-report.md' },
-    ],
-  },
-  custom: {
-    inputs: [],
-    outputs: [],
-  },
-};
-
-function interpolate(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
-    return vars[key] ?? `{{${key}}}`;
-  });
-}
-
-export function deriveFileTabs(
-  harness: HarnessDefinition,
-  agents: AgentDefinition[],
-  runId: string
-): FileTab[] {
-  const order = topoSort(harness.nodes, harness.connections);
-  const agentMap = new Map(agents.map((a) => [a.id, a]));
-  const tabs: FileTab[] = [];
-  const seenFiles = new Set<string>();
-
-  // Always add requirements as the first editable input
-  const reqPath = interpolate('.harness/runs/{{runId}}/inputs/requirements.md', { runId });
-  tabs.push({
-    id: 'global-requirements',
-    label: 'Requirements',
-    filePath: reqPath,
-    editable: true,
-    nodeId: order[0] ?? '',
-    agentCategory: 'planner',
-  });
-  seenFiles.add(reqPath);
-
-  for (const nodeId of order) {
-    const node = harness.nodes.find((n) => n.id === nodeId);
-    if (!node) continue;
-    const agent = agentMap.get(node.agentId);
-    if (!agent) continue;
-
-    const categoryFiles = CATEGORY_FILES[agent.category] ?? CATEGORY_FILES.custom;
-
-    for (const file of categoryFiles.outputs) {
-      const filePath = interpolate(file.path, { runId });
-      if (seenFiles.has(filePath)) continue;
-      seenFiles.add(filePath);
-
-      tabs.push({
-        id: `${nodeId}-${file.id}`,
-        label: file.label,
-        filePath,
-        editable: false,
-        nodeId,
-        agentCategory: agent.category,
-      });
-    }
-  }
-
-  return tabs;
 }

@@ -1,33 +1,31 @@
-// === Slot & Constraint Primitives ===
+// ── Slot & Constraint primitives ──
 
 export interface SlotDef {
-  key: string;
-  label?: string;
+  name: string;
   description?: string;
-  required?: boolean;
-  defaultValue?: string;
+  filePattern?: string;
 }
 
-export interface ConstraintCheck {
-  type: 'command' | 'exitCode' | 'outputContains' | 'outputMatches';
-  command?: string;
-  exitCode?: number;
-  pattern?: string;
-}
+export type ConstraintCheck =
+  | { type: 'shell'; command: string }
+  | { type: 'file_contains'; path: string; pattern: string }
+  | { type: 'expression'; expr: string };
 
-export type OnFailAction = 'retry' | 'route' | 'fail' | 'skip';
+export type OnFailAction =
+  | { type: 'retry' }
+  | { type: 'route'; targetNodeId: string }
+  | { type: 'abort' };
 
 export interface NodeConstraint {
   name: string;
   check: ConstraintCheck;
   onFail: OnFailAction;
-  maxRetries?: number;
-  routeTarget?: string;
+  maxRetries?: number; // default 3
 }
 
-// === Node Configs ===
+// ── Node configs per type ──
 
-export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+import type { PermissionMode } from './claude';
 
 export interface AgentNodeConfig {
   agentId?: string;
@@ -46,63 +44,61 @@ export interface AgentNodeConfig {
   };
   routing?: {
     outputKey: string;
-    branches: Record<string, string>;
+    branches: Record<string, string>; // value → nodeId
     defaultBranch?: string;
   };
 }
 
 export interface ConditionNodeConfig {
   expression: string;
-  trueBranch?: string;
-  falseBranch?: string;
+  branches: Record<string, string>; // value → nodeId
 }
 
 export interface GateNodeConfig {
-  waitFor: string[];
-  mode: 'all' | 'any';
+  gateMessage?: string;
 }
 
-// === Node ===
+// ── Node ──
 
 export type HarnessNodeType = 'agent' | 'condition' | 'gate';
 
 export interface HarnessNode {
   id: string;
   type: HarnessNodeType;
-  label?: string;
   position: { x: number; y: number };
-  config: AgentNodeConfig | ConditionNodeConfig | GateNodeConfig;
+  agent?: AgentNodeConfig;
+  condition?: ConditionNodeConfig;
+  gate?: GateNodeConfig;
 }
 
-// === Connections & Failure Routes ===
+// ── Connections & Failure Routes ──
 
 export interface HarnessConnection {
   id: string;
   sourceNodeId: string;
   targetNodeId: string;
   slotBinding?: {
-    sourceSlot: string;
-    targetSlot: string;
+    fromSlot: string;
+    toSlot: string;
   };
 }
 
 export interface FailureRoute {
   fromNodeId: string;
+  constraintName: string;
   toNodeId: string;
-  constraintName?: string;
 }
 
-// === Harness Input ===
+// ── Harness-level input ──
 
 export interface HarnessInput {
-  key: string;
-  label?: string;
+  name: string;
   description?: string;
   required?: boolean;
-  defaultValue?: string;
+  default?: string;
 }
 
-// === Harness Definition ===
+// ── Harness Definition ──
 
 export interface HarnessDefinition {
   id: string;
@@ -120,7 +116,7 @@ export interface HarnessDefinition {
   builtin?: boolean;
 }
 
-// === Templates ===
+// ── Templates ──
 
 export interface HarnessTemplateInfo {
   id: string;
@@ -129,7 +125,7 @@ export interface HarnessTemplateInfo {
   builtin: boolean;
 }
 
-// === Runtime State ===
+// ── Runtime state ──
 
 export type NodeStatus =
   | 'pending'
@@ -139,31 +135,28 @@ export type NodeStatus =
   | 'completed'
   | 'failed'
   | 'skipped'
-  | 'waiting';
+  | 'waiting'; // gate waiting for user
 
 export interface NodeRuntimeState {
   status: NodeStatus;
+  attempt: number;
   outputs: Record<string, string>;
   error?: string;
-  attempt?: number;
 }
 
-// === Agent Definition (kept for agent CRUD) ===
-
-export type AgentCategory = 'planner' | 'implementer' | 'verifier' | 'reviewer' | 'custom';
+// ── Agent Definition (kept for agent CRUD) ──
 
 export interface AgentDefinition {
   id: string;
   name: string;
-  description: string;
-  category: AgentCategory;
-  promptTemplate: string;
-  allowedTools: string[];
-  maxTurns: number;
+  description?: string;
+  promptTemplate?: string;
+  allowedTools?: string[];
+  maxTurns?: number;
   builtin?: boolean;
 }
 
-// === Domain Knowledge Modules ===
+// ── Domain types (unchanged) ──
 
 export interface DomainSlot {
   id: string;
@@ -179,8 +172,8 @@ export interface DomainMeta {
 }
 
 export interface DomainInfo {
-  slug: string;       // Directory name (filesystem identifier)
-  name: string;       // Display name from domain.json
+  slug: string;
+  name: string;
   description: string;
   tags: string[];
   files: string[];

@@ -6,16 +6,20 @@ import type { HarnessDefinition, HarnessTemplateInfo } from '../types/harness';
 const SDD_TEMPLATE: HarnessDefinition = {
   id: 'sdd-standard',
   name: 'Plan-Implement-Verify',
-  description: 'Planner → Implementer → Verifier',
+  description: 'Planner → Implementer → Verifier relay pattern',
   builtin: true,
   nodes: [
-    { id: 'n-planner', agentId: 'Planner', position: { x: 100, y: 200 } },
-    { id: 'n-impl', agentId: 'Implementer', position: { x: 400, y: 200 } },
-    { id: 'n-verifier', agentId: 'Verifier', position: { x: 700, y: 200 } },
+    { id: 'n-planner', type: 'agent', position: { x: 100, y: 200 }, agent: { agentPreset: 'planner' } },
+    { id: 'n-impl', type: 'agent', position: { x: 400, y: 200 }, agent: { agentPreset: 'coder' } },
+    { id: 'n-verifier', type: 'agent', position: { x: 700, y: 200 }, agent: { agentPreset: 'verifier' } },
   ],
   connections: [
     { id: 'e-plan-impl', sourceNodeId: 'n-planner', targetNodeId: 'n-impl' },
     { id: 'e-impl-verify', sourceNodeId: 'n-impl', targetNodeId: 'n-verifier' },
+  ],
+  failureRoutes: [],
+  inputs: [
+    { name: 'task', description: 'What to work on', required: true },
   ],
 };
 
@@ -25,13 +29,17 @@ const BUGFIX_TEMPLATE: HarnessDefinition = {
   description: 'Analyzer → Implementer → Verifier',
   builtin: true,
   nodes: [
-    { id: 'n-analyzer', agentId: 'Analyzer', position: { x: 100, y: 200 } },
-    { id: 'n-impl', agentId: 'Implementer', position: { x: 400, y: 200 } },
-    { id: 'n-verifier', agentId: 'Verifier', position: { x: 700, y: 200 } },
+    { id: 'n-analyzer', type: 'agent', position: { x: 100, y: 200 }, agent: { agentId: 'Analyzer' } },
+    { id: 'n-impl', type: 'agent', position: { x: 400, y: 200 }, agent: { agentPreset: 'coder' } },
+    { id: 'n-verifier', type: 'agent', position: { x: 700, y: 200 }, agent: { agentPreset: 'verifier' } },
   ],
   connections: [
     { id: 'e-analyze-impl', sourceNodeId: 'n-analyzer', targetNodeId: 'n-impl' },
     { id: 'e-impl-verify', sourceNodeId: 'n-impl', targetNodeId: 'n-verifier' },
+  ],
+  failureRoutes: [],
+  inputs: [
+    { name: 'bug', description: 'Bug description', required: true },
   ],
 };
 
@@ -43,7 +51,7 @@ export function getBuiltinTemplates(): HarnessTemplateInfo[] {
   return BUILTIN_TEMPLATES.map((t) => ({
     id: t.id,
     name: t.name,
-    description: t.description,
+    description: t.description ?? '',
     builtin: true,
   }));
 }

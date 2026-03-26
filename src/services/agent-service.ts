@@ -156,7 +156,6 @@ export async function loadAgentMeta(
     id: agentInfo.id,
     name: agentInfo.name,
     description: agentInfo.description,
-    category: (config?.category ?? agentInfo.category ?? 'custom') as AgentDefinition['category'],
     promptTemplate: config?.promptTemplate ?? builtinTemplate ?? '',
     allowedTools: config?.allowedTools ?? ['Read', 'Glob', 'Grep'],
     maxTurns: config?.maxTurns ?? 20,
@@ -176,9 +175,8 @@ export async function saveAgentMeta(
   meta: AgentDefinition
 ): Promise<void> {
   const config: AgentToolConfig = {
-    allowedTools: meta.allowedTools,
-    maxTurns: meta.maxTurns,
-    category: meta.category,
+    allowedTools: meta.allowedTools ?? [],
+    maxTurns: meta.maxTurns ?? 20,
     promptTemplate: meta.promptTemplate,
   };
   await saveAgentToolConfig(projectPath, meta.id, config);

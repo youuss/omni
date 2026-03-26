@@ -1,8 +1,6 @@
 import { Command } from '@tauri-apps/plugin-shell';
-import type { NodeConstraint, ConstraintCheck } from '../../types/harness';
+import type { NodeConstraint } from '../../types/harness';
 import type { NodeContext } from '../../types/engine';
-
-// === Result Type ===
 
 export interface ConstraintResult {
   name: string;
@@ -13,113 +11,80 @@ export interface ConstraintResult {
   error?: string;
 }
 
-// === Individual Check ===
-
 export async function checkConstraint(
   constraint: NodeConstraint,
   nodeContext: NodeContext,
   allContexts: Record<string, NodeContext>,
   projectPath: string
 ): Promise<ConstraintResult> {
-  const { name, check } = constraint;
-
   try {
-    return await runCheck(name, check, nodeContext, allContexts, projectPath);
+    const { check } = constraint;
+    switch (check.type) {
+      case 'shell':
+        return await runShellCheck(constraint.name, check.command, projectPath);
+      case 'file_contains':
+        return await runFileContainsCheck(constraint.name, check.path, check.pattern, projectPath);
+      case 'expression':
+        return runExpressionCheck(constraint.name, check.expr, nodeContext, allContexts);
+    }
   } catch (err) {
     return {
-      name,
+      name: constraint.name,
       passed: false,
       error: err instanceof Error ? err.message : String(err),
     };
   }
 }
 
-async function runCheck(
+async function runShellCheck(
   name: string,
-  check: ConstraintCheck,
-  nodeContext: NodeContext,
-  _allContexts: Record<string, NodeContext>,
-  projectPath: string
+  command: string,
+  cwd: string
 ): Promise<ConstraintResult> {
-  switch (check.type) {
-    case 'command': {
-      // Run shell command via sh -c
-      const command = check.command ?? '';
-      const cmd = Command.create('run-constraint-check', ['-c', command], {
-        cwd: projectPath,
-      });
-
-      const output = await cmd.execute();
-      const exitCode = output.code ?? 1;
-      const stdout = output.stdout ?? '';
-      const stderr = output.stderr ?? '';
-
-      return {
-        name,
-        passed: exitCode === 0,
-        exitCode,
-        stdout,
-        stderr,
-      };
-    }
-
-    case 'exitCode': {
-      // Check that nodeContext.exitCode matches the expected value
-      const expected = check.exitCode ?? 0;
-      const actual = nodeContext.exitCode ?? 0;
-      return {
-        name,
-        passed: actual === expected,
-        exitCode: actual,
-      };
-    }
-
-    case 'outputContains': {
-      // Check that any output value contains the pattern as a substring
-      const pattern = check.pattern ?? '';
-      const allOutput = Object.values(nodeContext.outputs).join('\n');
-      const passed = allOutput.includes(pattern);
-      return {
-        name,
-        passed,
-        stdout: allOutput,
-      };
-    }
-
-    case 'outputMatches': {
-      // Check that any output value matches the pattern as a regex
-      const pattern = check.pattern ?? '';
-      const allOutput = Object.values(nodeContext.outputs).join('\n');
-      let passed = false;
-      try {
-        passed = new RegExp(pattern).test(allOutput);
-      } catch {
-        return {
-          name,
-          passed: false,
-          error: `Invalid regex pattern: ${pattern}`,
-          stdout: allOutput,
-        };
-      }
-      return {
-        name,
-        passed,
-        stdout: allOutput,
-      };
-    }
-
-    default: {
-      // Unknown check type — treat as passed to avoid blocking execution
-      return {
-        name,
-        passed: true,
-        error: `Unknown constraint check type: ${(check as ConstraintCheck).type}`,
-      };
-    }
-  }
+  const cmd = Command.create('run-constraint-check', ['-c', command], { cwd });
+  const output = await cmd.execute();
+  return {
+    name,
+    passed: output.code === 0,
+    exitCode: output.code ?? undefined,
+    stdout: output.stdout?.trim() || undefined,
+    stderr: output.stderr?.trim() || undefined,
+  };
 }
 
-// === Batch Check ===
+async function runFileContainsCheck(
+  name: string,
+  filePath: string,
+  pattern: string,
+  projectPath: string
+): Promise<ConstraintResult> {
+  const fullPath = filePath.startsWith('/') ? filePath : `${projectPath}/${filePath}`;
+  const cmd = Command.create('run-constraint-check', ['-c', `cat "${fullPath}"`], {
+    cwd: projectPath,
+  });
+  const output = await cmd.execute();
+  const content = output.stdout || '';
+  const regex = new RegExp(pattern);
+  const passed = regex.test(content);
+  return { name, passed, stdout: passed ? 'Pattern matched' : 'Pattern not found' };
+}
+
+function runExpressionCheck(
+  name: string,
+  expr: string,
+  nodeContext: NodeContext,
+  allContexts: Record<string, NodeContext>
+): ConstraintResult {
+  const nodes: Record<string, { exitCode?: number; outputs: Record<string, string>; metadata?: Record<string, unknown> }> = {};
+  for (const [nodeId, ctx] of Object.entries(allContexts)) {
+    nodes[nodeId] = { exitCode: ctx.exitCode, outputs: ctx.outputs, metadata: ctx.metadata };
+  }
+  nodes['self'] = { exitCode: nodeContext.exitCode, outputs: nodeContext.outputs, metadata: nodeContext.metadata };
+
+  const fn = new Function('nodes', 'self', `return Boolean(${expr})`);
+  const result = fn(nodes, nodes['self']);
+  return { name, passed: result, stdout: `Expression evaluated to: ${result}` };
+}
 
 export async function checkAllConstraints(
   constraints: NodeConstraint[],
@@ -133,25 +98,12 @@ export async function checkAllConstraints(
   failedResult?: ConstraintResult;
 }> {
   const results: ConstraintResult[] = [];
-
   for (const constraint of constraints) {
-    const result = await checkConstraint(
-      constraint,
-      nodeContext,
-      allContexts,
-      projectPath
-    );
+    const result = await checkConstraint(constraint, nodeContext, allContexts, projectPath);
     results.push(result);
-
     if (!result.passed) {
-      return {
-        allPassed: false,
-        results,
-        failedConstraint: constraint,
-        failedResult: result,
-      };
+      return { allPassed: false, results, failedConstraint: constraint, failedResult: result };
     }
   }
-
   return { allPassed: true, results };
 }
