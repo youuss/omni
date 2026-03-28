@@ -95,7 +95,15 @@ export async function runAgent(
     }
   }
 
-  const runnerScript = await resolveResource('scripts/sdk-runner.mjs');
+  let runnerScript: string;
+  if (import.meta.env.DEV) {
+    // In dev, resolveResource points into src-tauri/target/debug/ which lacks bundled resources.
+    // Resolve from the debug dir up to the project root.
+    const debugDir = await resolveResource('');
+    runnerScript = debugDir.replace(/src-tauri\/target\/debug\/?$/, 'scripts/sdk-runner.mjs');
+  } else {
+    runnerScript = await resolveResource('scripts/sdk-runner.mjs');
+  }
 
   onStatus?.(`[sdk] Starting agents [${agentNames.join(', ')}] via Agent SDK`);
 
