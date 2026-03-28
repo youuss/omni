@@ -27,12 +27,11 @@ export interface AgentNodeData {
 
 type AgentNodeProps = NodeProps & { data: AgentNodeData };
 
-const CATEGORY_ICONS: Record<string, React.ElementType> = {
-  planner: FileText,
-  implementer: Code2,
-  verifier: ClipboardCheck,
-  reviewer: Search,
-  custom: Bot,
+const AGENT_ICONS: Record<string, React.ElementType> = {
+  Planner: FileText,
+  Implementer: Code2,
+  Verifier: ClipboardCheck,
+  Analyzer: Search,
 };
 
 const STATUS_CONFIG: Record<
@@ -53,7 +52,7 @@ function AgentNode({ data, selected }: AgentNodeProps) {
   const { agent, status = 'pending', error, hasOverrides } = data;
   const statusConfig = STATUS_CONFIG[status] ?? STATUS_CONFIG.pending;
   const StatusIcon = statusConfig.icon;
-  const CategoryIcon = CATEGORY_ICONS[agent.builtin ? 'custom' : 'custom'] ?? Bot;
+  const CategoryIcon = AGENT_ICONS[agent.id] ?? Bot;
 
   return (
     <div

@@ -48,7 +48,7 @@ function HarnessCanvasInner({ onNodeClick, onPaneClick }: HarnessCanvasProps) {
     if (!currentHarness) return [];
     const agentMap = new Map(agents.map((a) => [a.id, a]));
     return currentHarness.nodes.map((node) => {
-      const agentId = node.agent?.agentId || node.agent?.agentPreset || node.id;
+      const agentId = node.agent?.agentId || node.id;
       const agent = agentMap.get(agentId);
       return {
         id: node.id,

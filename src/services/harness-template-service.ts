@@ -9,9 +9,9 @@ const SDD_TEMPLATE: HarnessDefinition = {
   description: 'Planner → Implementer → Verifier relay pattern',
   builtin: true,
   nodes: [
-    { id: 'n-planner', type: 'agent', position: { x: 100, y: 200 }, agent: { agentPreset: 'planner' } },
-    { id: 'n-impl', type: 'agent', position: { x: 400, y: 200 }, agent: { agentPreset: 'coder' } },
-    { id: 'n-verifier', type: 'agent', position: { x: 700, y: 200 }, agent: { agentPreset: 'verifier' } },
+    { id: 'n-planner', type: 'agent', position: { x: 100, y: 200 }, agent: { agentId: 'Planner' } },
+    { id: 'n-impl', type: 'agent', position: { x: 400, y: 200 }, agent: { agentId: 'Implementer' } },
+    { id: 'n-verifier', type: 'agent', position: { x: 700, y: 200 }, agent: { agentId: 'Verifier' } },
   ],
   connections: [
     { id: 'e-plan-impl', sourceNodeId: 'n-planner', targetNodeId: 'n-impl' },
@@ -30,8 +30,8 @@ const BUGFIX_TEMPLATE: HarnessDefinition = {
   builtin: true,
   nodes: [
     { id: 'n-analyzer', type: 'agent', position: { x: 100, y: 200 }, agent: { agentId: 'Analyzer' } },
-    { id: 'n-impl', type: 'agent', position: { x: 400, y: 200 }, agent: { agentPreset: 'coder' } },
-    { id: 'n-verifier', type: 'agent', position: { x: 700, y: 200 }, agent: { agentPreset: 'verifier' } },
+    { id: 'n-impl', type: 'agent', position: { x: 400, y: 200 }, agent: { agentId: 'Implementer' } },
+    { id: 'n-verifier', type: 'agent', position: { x: 700, y: 200 }, agent: { agentId: 'Verifier' } },
   ],
   connections: [
     { id: 'e-analyze-impl', sourceNodeId: 'n-analyzer', targetNodeId: 'n-impl' },

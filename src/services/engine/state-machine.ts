@@ -151,7 +151,7 @@ export class StateMachine {
 
   private executeAgentNode(node: HarnessNode, runtime: NodeRuntime): Promise<void> {
     const { harness, agents, callbacks, projectPath, runId, extensions, harnessInputs } = this.opts;
-    const agentId = node.agent?.agentId || node.agent?.agentPreset || '';
+    const agentId = node.agent?.agentId || '';
     const agent = agents.find((a) => a.id === agentId || a.name === agentId);
     if (!agent) {
       this.setNodeStatus(node.id, 'failed', `Agent not found: ${agentId}`);

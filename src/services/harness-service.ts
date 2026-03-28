@@ -54,7 +54,7 @@ export function getDefaultHarness(): HarnessDefinition {
         id: 'node-1',
         type: 'agent',
         position: { x: 250, y: 200 },
-        agent: { agentPreset: 'coder' },
+        agent: { agentId: 'Implementer' },
       },
     ],
     connections: [],
@@ -78,15 +78,15 @@ function developTemplate(): HarnessDefinition {
     description: 'Plan → Code (with build constraint) → Review',
     builtin: true,
     nodes: [
-      { id: 'planner', type: 'agent', position: { x: 100, y: 200 }, agent: { agentPreset: 'planner' } },
+      { id: 'planner', type: 'agent', position: { x: 100, y: 200 }, agent: { agentId: 'Planner' } },
       {
         id: 'coder', type: 'agent', position: { x: 400, y: 200 },
         agent: {
-          agentPreset: 'coder',
+          agentId: 'Implementer',
           constraints: [{ name: 'build-pass', check: { type: 'shell', command: 'npm run build' }, onFail: { type: 'retry' }, maxRetries: 3 }],
         },
       },
-      { id: 'reviewer', type: 'agent', position: { x: 700, y: 200 }, agent: { agentPreset: 'reviewer' } },
+      { id: 'reviewer', type: 'agent', position: { x: 700, y: 200 }, agent: { agentId: 'Verifier' } },
     ],
     connections: [
       { id: 'c1', sourceNodeId: 'planner', targetNodeId: 'coder' },
@@ -108,7 +108,7 @@ function fixTemplate(): HarnessDefinition {
       {
         id: 'fixer', type: 'agent', position: { x: 400, y: 200 },
         agent: {
-          agentPreset: 'coder',
+          agentId: 'Implementer',
           constraints: [
             { name: 'build-pass', check: { type: 'shell', command: 'npm run build' }, onFail: { type: 'retry' }, maxRetries: 3 },
             { name: 'tests-pass', check: { type: 'shell', command: 'npm test' }, onFail: { type: 'retry' }, maxRetries: 2 },
@@ -130,7 +130,7 @@ function reviewTemplate(): HarnessDefinition {
     builtin: true,
     nodes: [
       { id: 'analyzer', type: 'agent', position: { x: 100, y: 200 }, agent: { agentId: 'Analyzer' } },
-      { id: 'reviewer', type: 'agent', position: { x: 400, y: 200 }, agent: { agentPreset: 'reviewer' } },
+      { id: 'reviewer', type: 'agent', position: { x: 400, y: 200 }, agent: { agentId: 'Verifier' } },
       { id: 'approval', type: 'gate', position: { x: 700, y: 200 }, gate: { gateMessage: 'Review the analysis and review report before approving' } },
     ],
     connections: [

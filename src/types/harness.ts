@@ -29,7 +29,6 @@ import type { PermissionMode } from './claude';
 
 export interface AgentNodeConfig {
   agentId?: string;
-  agentPreset?: 'planner' | 'coder' | 'verifier' | 'reviewer';
   inputSlots?: SlotDef[];
   outputSlots?: SlotDef[];
   constraints?: NodeConstraint[];

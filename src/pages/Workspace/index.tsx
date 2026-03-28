@@ -193,7 +193,7 @@ export default function WorkspacePage() {
     if (!selectedNodeId || !currentHarness) return undefined;
     const node = currentHarness.nodes.find((n) => n.id === selectedNodeId);
     if (!node) return undefined;
-    return agents.find((a) => a.id === (node.agent?.agentId || node.agent?.agentPreset || ''));
+    return agents.find((a) => a.id === (node.agent?.agentId || ''));
   }, [selectedNodeId, currentHarness, agents]);
 
   if (!currentProject) {
