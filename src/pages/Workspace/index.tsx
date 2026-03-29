@@ -74,6 +74,7 @@ export default function WorkspacePage() {
   const [outputHeight, setOutputHeight] = useState(200);
 
   const [harnessInputs, setHarnessInputs] = useState<Record<string, string>>({});
+  const [inputPanelOpen, setInputPanelOpen] = useState(false);
 
   const harness = useHarnessRunner({
     projectPath: currentProject?.path,
@@ -145,14 +146,11 @@ export default function WorkspacePage() {
   );
 
   const handleCreateRun = useCallback(
-    async (runId: string, reqDraft: string, harnessId: string) => {
+    async (runId: string, harnessId: string) => {
       if (!currentProject) return;
       try {
         await runService.createRun(currentProject.path, runId);
         await runService.writeRunMeta(currentProject.path, runId, { harnessId });
-        if (reqDraft.trim()) {
-          await runService.writeRunFile(currentProject.path, runId, 'inputs/requirements.md', reqDraft.trim());
-        }
         await loadRuns();
         startRun(runId);
         await loadHarness(currentProject.path, harnessId);
@@ -183,6 +181,27 @@ export default function WorkspacePage() {
   const handleAbort = useCallback(() => {
     harness.abort();
   }, [harness]);
+
+  const hasRequiredInputs = currentHarness?.inputs?.some((i) => i.required) ?? false;
+
+  const handleRunRequest = useCallback(() => {
+    if (hasRequiredInputs) {
+      // Check if all required inputs are filled
+      const missingRequired = currentHarness!.inputs!.filter(
+        (i) => i.required && !harnessInputs[i.name]?.trim()
+      );
+      if (missingRequired.length > 0) {
+        setInputPanelOpen(true);
+        return;
+      }
+    }
+    harness.runHarness(harnessInputs);
+  }, [hasRequiredInputs, currentHarness, harnessInputs, harness]);
+
+  const handleConfirmInputs = useCallback(() => {
+    setInputPanelOpen(false);
+    harness.runHarness(harnessInputs);
+  }, [harness, harnessInputs]);
 
   const toggleDrawer = (panel: DrawerPanel) => {
     setDrawerPanel((prev) => (prev === panel ? null : panel));
@@ -219,7 +238,7 @@ export default function WorkspacePage() {
           harnessReady={harnessReady}
           onSelectRun={handleSelectRun}
           onCreateRun={() => setCreateModalOpen(true)}
-          onRunHarness={() => harness.runHarness(harnessInputs)}
+          onRunHarness={handleRunRequest}
           onAbort={handleAbort}
           onArchive={handleArchive}
         />
@@ -238,7 +257,7 @@ export default function WorkspacePage() {
               projectPath={currentProject.path}
               isRunning={anyRunning}
               harnessReady={harnessReady}
-              onRunHarness={() => harness.runHarness(harnessInputs)}
+              onRunHarness={handleRunRequest}
               onAbort={handleAbort}
             />
           )}
@@ -318,14 +337,16 @@ export default function WorkspacePage() {
           )}
         </div>
 
-        {/* Input Panel */}
-        {currentHarness?.inputs && currentHarness.inputs.length > 0 && currentRunId && !anyRunning && (
-          <div className="shrink-0 h-[180px] border-t border-border/40">
+        {/* Input Panel — shown when user triggers run with unfilled required inputs */}
+        {inputPanelOpen && currentHarness?.inputs && currentHarness.inputs.length > 0 && (
+          <div className="shrink-0 h-[220px] border-t border-border/40">
             <InputPanel
               inputs={currentHarness.inputs}
               values={harnessInputs}
               onChange={(name, value) => setHarnessInputs((prev) => ({ ...prev, [name]: value }))}
               isRunning={anyRunning}
+              onConfirm={handleConfirmInputs}
+              onCancel={() => setInputPanelOpen(false)}
             />
           </div>
         )}

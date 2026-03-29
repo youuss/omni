@@ -19,7 +19,6 @@ interface ExecutorOptions {
   harness: HarnessDefinition;
   agents: AgentDefinition[];
   callbacks: ExecutorCallbacks;
-  harnessInputs?: Record<string, string>;
   extensions?: string[];
   startFromNodeId?: string;
   stepMode?: boolean;
@@ -55,7 +54,6 @@ export class HarnessExecutor {
       harness: opts.harness,
       agents: opts.agents,
       callbacks: smCallbacks,
-      harnessInputs: opts.harnessInputs,
       extensions: opts.extensions,
       startFromNodeId: opts.startFromNodeId,
       stepMode: opts.stepMode,

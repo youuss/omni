@@ -19,7 +19,7 @@ const SDD_TEMPLATE: HarnessDefinition = {
   ],
   failureRoutes: [],
   inputs: [
-    { name: 'task', description: 'What to work on', required: true },
+    { name: 'task', description: 'What to work on', required: true, filename: 'requirements.md' },
   ],
 };
 
@@ -39,7 +39,7 @@ const BUGFIX_TEMPLATE: HarnessDefinition = {
   ],
   failureRoutes: [],
   inputs: [
-    { name: 'bug', description: 'Bug description', required: true },
+    { name: 'bug', description: 'Bug description', required: true, filename: 'requirements.md' },
   ],
 };
 

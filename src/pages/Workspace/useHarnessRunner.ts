@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { checkClaudeAvailable } from '../../services/claude/claude-runner';
 import { HarnessExecutor } from '../../services/harness-executor';
+import { writeRunFile } from '../../services/run-service';
 import { useHarnessStore } from '../../stores/harnessStore';
 import { useOutputStore } from '../../stores/outputStore';
 import { useRunStore } from '../../stores/runStore';
@@ -44,6 +45,16 @@ export function useHarnessRunner(options: UseHarnessRunnerOptions) {
     if (currentHarness.nodes.length === 0) {
       toast.warning('Harness has no nodes');
       return;
+    }
+
+    // Write input values to disk before execution
+    if (harnessInputs && currentHarness.inputs) {
+      for (const inputDef of currentHarness.inputs) {
+        const value = harnessInputs[inputDef.name];
+        if (value?.trim() && inputDef.filename) {
+          await writeRunFile(projectPath, runId, `inputs/${inputDef.filename}`, value.trim());
+        }
+      }
     }
 
     setHarnessRunning(true);
@@ -95,7 +106,6 @@ export function useHarnessRunner(options: UseHarnessRunnerOptions) {
           }
         },
       },
-      harnessInputs,
       startFromNodeId: executionMode === 'fromNode' ? startFromNodeId ?? undefined : undefined,
       stepMode: executionMode === 'step',
     });

@@ -11,17 +11,31 @@ export interface AgentConfig {
 
 const AGENT_NAMES: AgentName[] = ['Planner', 'Implementer', 'Verifier', 'Analyzer'];
 
-const BUILT_IN_DEFAULTS: Record<
-  string,
-  Omit<AgentConfig, 'systemPrompt'>
-> = {
-  Planner: { allowedTools: ['Read', 'Glob', 'Grep', 'Write'], maxTurns: 20 },
+interface AgentDefaults extends Omit<AgentConfig, 'systemPrompt'> {
+  promptTemplate: string;
+}
+
+const BUILT_IN_DEFAULTS: Record<string, AgentDefaults> = {
+  Planner: {
+    allowedTools: ['Read', 'Glob', 'Grep', 'Write'],
+    maxTurns: 20,
+    promptTemplate: 'Based on the following requirements, generate a development plan and write it to .harness/runs/{{runId}}/outputs/dev-plan.md.\n\nRequirements: Read .harness/runs/{{runId}}/inputs/requirements.md',
+  },
   Implementer: {
     allowedTools: ['Read', 'Edit', 'Write', 'Bash', 'Glob', 'Grep'],
     maxTurns: 50,
+    promptTemplate: 'Implement the code according to the dev plan in .harness/runs/{{runId}}/outputs/dev-plan.md. After completion, append the delivery checklist to the plan.',
   },
-  Verifier: { allowedTools: ['Read', 'Glob', 'Grep'], maxTurns: 15 },
-  Analyzer: { allowedTools: ['Read', 'Glob', 'Grep', 'Write'], maxTurns: 20 },
+  Verifier: {
+    allowedTools: ['Read', 'Glob', 'Grep'],
+    maxTurns: 15,
+    promptTemplate: 'Verify whether the implementation meets the plan requirements.\nRead .harness/runs/{{runId}}/outputs/dev-plan.md for plan details, then review the code and write the verification report to .harness/runs/{{runId}}/outputs/verification-report.md',
+  },
+  Analyzer: {
+    allowedTools: ['Read', 'Glob', 'Grep', 'Write'],
+    maxTurns: 20,
+    promptTemplate: 'Analyze the following bug description, investigate the codebase to find the root cause, and write a fix plan to .harness/runs/{{runId}}/outputs/fix-plan.md.\n\nBug description: Read .harness/runs/{{runId}}/inputs/requirements.md',
+  },
 };
 
 const LOW_RATE_LIMIT_TURNS: Record<string, number> = {
@@ -121,10 +135,10 @@ export async function ensureAgentConfigs(projectPath: string): Promise<void> {
       .catch(() => false);
 
     if (!jsonExists) {
-      const config: Omit<AgentConfig, 'systemPrompt'> = BUILT_IN_DEFAULTS[name];
+      const { allowedTools, maxTurns, promptTemplate } = BUILT_IN_DEFAULTS[name];
       await invoke('write_text_file', {
         path: jsonDest,
-        content: JSON.stringify(config, null, 2),
+        content: JSON.stringify({ allowedTools, maxTurns, promptTemplate }, null, 2),
       });
     }
   }

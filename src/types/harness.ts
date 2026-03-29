@@ -95,6 +95,7 @@ export interface HarnessInput {
   description?: string;
   required?: boolean;
   default?: string;
+  filename?: string; // e.g. 'requirements.md' — written to runs/{runId}/inputs/{filename}
 }
 
 // ── Harness Definition ──

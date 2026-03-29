@@ -138,25 +138,17 @@ export async function deleteAgent(
   await toggleAgent(projectPath, agentId, false);
 }
 
-const BUILTIN_TEMPLATES: Record<string, string> = {
-  Planner: 'Based on the following requirements, generate a development plan and write it to .harness/runs/{{runId}}/outputs/dev-plan.md.\n\nRequirements: Read .harness/runs/{{runId}}/inputs/requirements.md',
-  Analyzer: 'Analyze the following bug description, investigate the codebase to find the root cause, and write a fix plan to .harness/runs/{{runId}}/outputs/fix-plan.md.\n\nBug description: Read .harness/runs/{{runId}}/inputs/requirements.md',
-  Implementer: 'Implement the code according to the dev plan in .harness/runs/{{runId}}/outputs/dev-plan.md. After completion, append the delivery checklist to the plan.',
-  Verifier: 'Verify whether the implementation meets the plan requirements.\nRead .harness/runs/{{runId}}/outputs/dev-plan.md for plan details, then review the code and write the verification report to .harness/runs/{{runId}}/outputs/verification-report.md',
-};
-
 export async function loadAgentMeta(
   _projectPath: string,
   agentInfo: AgentInfo
 ): Promise<AgentDefinition> {
   const config = await loadAgentToolConfig(agentInfo.config_path);
-  const builtinTemplate = BUILTIN_TEMPLATES[agentInfo.id];
 
   return {
     id: agentInfo.id,
     name: agentInfo.name,
     description: agentInfo.description,
-    promptTemplate: config?.promptTemplate ?? builtinTemplate ?? '',
+    promptTemplate: config?.promptTemplate ?? '',
     allowedTools: config?.allowedTools ?? ['Read', 'Glob', 'Grep'],
     maxTurns: config?.maxTurns ?? 20,
     builtin: agentInfo.builtin,

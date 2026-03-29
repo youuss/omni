@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -16,7 +15,7 @@ import { DEFAULT_TEMPLATE_ID } from '../../services/harness-template-service';
 interface CreateRunDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreate: (runId: string, reqDraft: string, harnessId: string) => void;
+  onCreate: (runId: string, harnessId: string) => void;
   templates?: HarnessTemplateInfo[];
 }
 
@@ -27,19 +26,17 @@ export function CreateRunDialog({
   templates = [],
 }: CreateRunDialogProps) {
   const [runId, setRunId] = useState('');
-  const [reqDraft, setReqDraft] = useState('');
   const [harnessId, setHarnessId] = useState(DEFAULT_TEMPLATE_ID);
 
   const handleClose = () => {
     onOpenChange(false);
     setRunId('');
-    setReqDraft('');
     setHarnessId(DEFAULT_TEMPLATE_ID);
   };
 
   const handleCreate = () => {
     if (!runId.trim()) return;
-    onCreate(runId.trim(), reqDraft, harnessId);
+    onCreate(runId.trim(), harnessId);
     handleClose();
   };
 
@@ -81,17 +78,6 @@ export function CreateRunDialog({
                 {templates.find((t) => t.id === harnessId)?.description ?? ''}
               </p>
             )}
-          </div>
-          <div>
-            <label className="text-xs font-medium mb-1.5 block">
-              Requirements (optional, editable later)
-            </label>
-            <Textarea
-              value={reqDraft}
-              onChange={(e) => setReqDraft(e.target.value)}
-              placeholder="Paste requirements content (Markdown)..."
-              className="min-h-[100px] text-xs"
-            />
           </div>
         </div>
         <DialogFooter>

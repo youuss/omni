@@ -25,7 +25,6 @@ export interface StateMachineOptions {
   harness: HarnessDefinition;
   agents: AgentDefinition[];
   callbacks: StateMachineCallbacks;
-  harnessInputs?: Record<string, string>;
   extensions?: string[];
   startFromNodeId?: string;
   stepMode?: boolean;
@@ -150,7 +149,7 @@ export class StateMachine {
   }
 
   private executeAgentNode(node: HarnessNode, runtime: NodeRuntime): Promise<void> {
-    const { harness, agents, callbacks, projectPath, runId, extensions, harnessInputs } = this.opts;
+    const { harness, agents, callbacks, projectPath, runId, extensions } = this.opts;
     const agentId = node.agent?.agentId || '';
     const agent = agents.find((a) => a.id === agentId || a.name === agentId);
     if (!agent) {
@@ -167,7 +166,6 @@ export class StateMachine {
       allContexts: Object.fromEntries(this.contexts),
       extensions,
       constraintFailure: runtime.constraintFailure,
-      harnessInputs,
     });
 
     const startTime = Date.now();

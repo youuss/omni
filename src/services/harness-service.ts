@@ -60,7 +60,7 @@ export function getDefaultHarness(): HarnessDefinition {
     connections: [],
     failureRoutes: [],
     inputs: [
-      { name: 'task', description: 'What to work on', required: true },
+      { name: 'task', description: 'What to work on', required: true, filename: 'requirements.md' },
     ],
   };
 }
@@ -93,7 +93,7 @@ function developTemplate(): HarnessDefinition {
       { id: 'c2', sourceNodeId: 'coder', targetNodeId: 'reviewer' },
     ],
     failureRoutes: [],
-    inputs: [{ name: 'task', description: 'Feature or task description', required: true }],
+    inputs: [{ name: 'task', description: 'Feature or task description', required: true, filename: 'requirements.md' }],
   };
 }
 
@@ -118,7 +118,7 @@ function fixTemplate(): HarnessDefinition {
     ],
     connections: [{ id: 'c1', sourceNodeId: 'diagnostor', targetNodeId: 'fixer' }],
     failureRoutes: [],
-    inputs: [{ name: 'bugReport', description: 'Bug description or error log', required: true }],
+    inputs: [{ name: 'bugReport', description: 'Bug description or error log', required: true, filename: 'requirements.md' }],
   };
 }
 
@@ -138,7 +138,7 @@ function reviewTemplate(): HarnessDefinition {
       { id: 'c2', sourceNodeId: 'reviewer', targetNodeId: 'approval' },
     ],
     failureRoutes: [],
-    inputs: [{ name: 'codeContext', description: 'Code or PR to review', required: true }],
+    inputs: [{ name: 'codeContext', description: 'Code or PR to review', required: true, filename: 'requirements.md' }],
   };
 }
 
