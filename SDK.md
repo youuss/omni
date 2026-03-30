@@ -2169,9 +2169,138 @@ const result = await query({
 如果 `permissionMode` 设置为 `bypassPermissions` 且 `allowUnsandboxedCommands` 已启用，模型可以在没有任何审批提示的情况下自主在沙箱外执行命令。这种组合实际上允许模型静默地逃脱沙箱隔离。
 </Warning>
 
+## Agent Skills
+
+Agent Skills 是扩展 Claude 功能的模块化能力单元。每个 Skill 包含指令、元数据和可选资源（脚本、模板），Claude 会在相关时自动使用。
+
+### 核心概念
+
+Skills 是可复用的、基于文件系统的资源，为 Claude 提供特定领域的专业知识。与提示词（对话级一次性指令）不同，Skills 按需加载，无需在多次对话中反复提供相同的指导。
+
+**主要优势**：
+- **专业化 Claude**：为特定领域任务定制能力
+- **减少重复**：一次创建，自动使用
+- **组合能力**：结合多个 Skills 构建复杂工作流程
+
+### Skill 结构
+
+每个 Skill 是一个包含 `SKILL.md` 的目录：
+
+```text
+my-skill/
+├── SKILL.md           # 主指令文件（必需）
+├── FORMS.md           # 额外指导文档（可选）
+├── REFERENCE.md       # 详细 API 参考（可选）
+└── scripts/
+    └── fill_form.py   # 工具脚本（可选）
+```
+
+`SKILL.md` 格式：
+
+```yaml
+---
+name: your-skill-name
+description: Brief description of what this Skill does and when to use it
+---
+
+# Your Skill Name
+
+## Instructions
+[Clear, step-by-step guidance for Claude to follow]
+
+## Examples
+[Concrete examples of using this Skill]
+```
+
+**必填字段**：`name` 和 `description`
+
+**字段约束**：
+- `name`：最多 64 字符，只能包含小写字母、数字和连字符，不能包含保留词 "anthropic"、"claude"
+- `description`：最多 1024 字符，不能为空，应包含功能描述和使用时机
+
+### 三级渐进式加载
+
+Skills 使用渐进式披露机制，按需分阶段加载：
+
+| 级别 | 加载时机 | Token 成本 | 内容 |
+|-------|------------|------------|---------|
+| **第一级：元数据** | 始终（启动时） | 每个 Skill 约 100 token | YAML 前置内容中的 `name` 和 `description` |
+| **第二级：指令** | Skill 被触发时 | 不超过 5k token | SKILL.md 主体内容 |
+| **第三级+：资源** | 按需引用时 | 实际上无限制 | 捆绑的文件、脚本，通过 bash 访问 |
+
+**加载流程**：
+1. **启动**：系统提示包含所有 Skill 的元数据（name + description）
+2. **触发**：用户请求匹配 Skill 描述时，Claude 通过 bash 读取 `SKILL.md`
+3. **深度访问**：SKILL.md 中引用的其他文件和脚本，仅在被引用时才访问
+
+脚本执行时只有输出进入上下文窗口，脚本代码本身不消耗 token。
+
+### 在 Agent SDK 中使用
+
+Agent SDK 通过基于文件系统的配置支持自定义 Skills。
+
+**Skill 存放位置**：
+- 个人级：`~/.claude/skills/` — 跨项目共享
+- 项目级：`.claude/skills/` — 项目特定
+
+**启用方式**：在 `allowed_tools` 配置中包含 `"Skill"` 工具：
+
+```typescript
+const result = query({
+  prompt: "Process this document",
+  options: {
+    allowedTools: ['Read', 'Write', 'Bash', 'Skill'],
+    settingSources: ['project']  // 加载项目级 Skills
+  }
+});
+```
+
+SDK 运行时会自动发现已安装的 Skills。Claude 根据请求与 Skill 描述的匹配度自动决定是否使用。
+
+### 预构建 Agent Skills
+
+Anthropic 提供的预构建 Skills（通过 API 使用时需指定 `skill_id`）：
+
+| Skill | skill_id | 功能 |
+|-------|----------|------|
+| PowerPoint | `pptx` | 创建/编辑演示文稿 |
+| Excel | `xlsx` | 创建电子表格、数据分析 |
+| Word | `docx` | 创建/编辑文档 |
+| PDF | `pdf` | 生成格式化 PDF |
+
+通过 API 使用预构建 Skills 需要以下 beta 标头：
+- `code-execution-2025-08-25`
+- `skills-2025-10-02`
+- `files-api-2025-04-14`
+
+### 自定义 Skills
+
+可通过 Skills API（`/v1/skills` 端点）创建上传，或在 Claude Code 中直接以文件系统目录形式创建。
+
+**跨平台注意事项**：
+- Skills 不会跨平台自动同步
+- Claude.ai 上传的 Skills 需单独上传到 API
+- Claude Code Skills 基于文件系统，与 API/Claude.ai 独立
+
+**共享范围**：
+- Claude.ai：仅限个人用户
+- Claude API：工作区范围，所有成员可访问
+- Claude Code：个人（`~/.claude/skills/`）或项目（`.claude/skills/`）
+
+### 安全注意事项
+
+仅使用来自可信来源的 Skills。Skills 通过指令和代码为 Claude 提供新能力，恶意 Skill 可能导致数据泄露或未授权系统访问。
+
+**审查要点**：
+- 检查所有捆绑文件（SKILL.md、脚本、资源）
+- 警惕从外部 URL 获取数据的 Skills
+- 像安装软件一样对待 Skill 的信任评估
+
 ## 另请参阅
 
 - [SDK 概述](/docs/zh-CN/agent-sdk/overview) - 通用 SDK 概念
 - [Python SDK 参考](/docs/zh-CN/agent-sdk/python) - Python SDK 文档
 - [CLI 参考](https://code.claude.com/docs/zh-CN/cli-reference) - 命令行界面
 - [常见工作流](https://code.claude.com/docs/zh-CN/common-workflows) - 分步指南
+- [Agent Skills 文档](/docs/zh-CN/agents-and-tools/agent-skills) - Skills 完整文档
+- [Skills 最佳实践](/docs/zh-CN/agents-and-tools/agent-skills/best-practices) - 编写有效 Skills 的指南
