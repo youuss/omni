@@ -50,6 +50,10 @@ pub fn run() {
             commands::extensions::scan_extensions,
             commands::extensions::write_extension_file,
             commands::extensions::delete_extension,
+            // Skills
+            commands::skills::scan_skills,
+            commands::skills::write_skill_file,
+            commands::skills::delete_skill,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

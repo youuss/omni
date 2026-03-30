@@ -40,6 +40,7 @@ export interface AgentNodeConfig {
     allowedTools?: string[];
     promptExtra?: string;
     permissionMode?: PermissionMode;
+    skills?: string[];
   };
   routing?: {
     outputKey: string;
@@ -154,6 +155,7 @@ export interface AgentDefinition {
   allowedTools?: string[];
   maxTurns?: number;
   builtin?: boolean;
+  skills?: string[];
 }
 
 // ── Domain types (unchanged) ──

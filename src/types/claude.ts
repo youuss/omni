@@ -1,3 +1,5 @@
+import type { SkillBinding } from './skill';
+
 export type AgentName = string;
 
 export interface AgentConfig {
@@ -117,6 +119,7 @@ export interface AgentOverride {
   allowedTools?: string[];
   model?: 'sonnet' | 'opus' | 'haiku' | 'inherit';
   promptExtra?: string;
+  skills?: string[];
 }
 
 export interface McpServerConfig {
@@ -158,6 +161,7 @@ export interface RunRequest {
   includePartialMessages?: boolean;
   mcpServers?: Record<string, McpServerConfig>;
   hooks?: HooksConfig;
+  skills?: SkillBinding[];
   constraintContext?: {
     failure?: {
       constraintName: string;
