@@ -16,6 +16,7 @@ export interface AgentToolConfig {
   maxTurns: number;
   category?: string;
   promptTemplate?: string;
+  skills?: string[];
 }
 
 const AGENTS_CONFIG_FILE = '.harness/agents.json';

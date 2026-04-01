@@ -15,6 +15,8 @@ import type {
   StateMachineCallbacks,
 } from '../../types/engine';
 import type { AgentRunHandle, SDKMessage } from '../../types/claude';
+import type { SkillMeta } from '../../types/skill';
+import { resolveAgentSkills, buildSkillBindings } from '../skill-service';
 import { writeRunFile } from '../run-service';
 
 const DEFAULT_MAX_RETRIES = 3;
@@ -26,6 +28,7 @@ export interface StateMachineOptions {
   agents: AgentDefinition[];
   callbacks: StateMachineCallbacks;
   extensions?: string[];
+  skills?: SkillMeta[];
   startFromNodeId?: string;
   stepMode?: boolean;
 }
@@ -149,7 +152,7 @@ export class StateMachine {
   }
 
   private executeAgentNode(node: HarnessNode, runtime: NodeRuntime): Promise<void> {
-    const { harness, agents, callbacks, projectPath, runId, extensions } = this.opts;
+    const { harness, agents, callbacks, projectPath, runId, extensions, skills } = this.opts;
     const agentId = node.agent?.agentId || '';
     const agent = agents.find((a) => a.id === agentId || a.name === agentId);
     if (!agent) {
@@ -157,7 +160,12 @@ export class StateMachine {
       return Promise.resolve();
     }
 
-    // Assemble prompt
+    // Resolve bound skills for this node
+    const skillIds = resolveAgentSkills(agent, node.agent?.overrides);
+    const boundSkills = skills ? buildSkillBindings(skillIds, skills) : [];
+    const nodeSkills = skills?.filter((s) => skillIds.includes(s.id));
+
+    // Assemble prompt (with skill metadata for Level 1)
     const prompt = assemblePrompt({
       node,
       agent,
@@ -165,6 +173,7 @@ export class StateMachine {
       connections: harness.connections,
       allContexts: Object.fromEntries(this.contexts),
       extensions,
+      skills: nodeSkills,
       constraintFailure: runtime.constraintFailure,
     });
 
@@ -179,6 +188,7 @@ export class StateMachine {
           agentNames: [agent.name],
           prompt,
           runId,
+          skills: boundSkills,
           onEvent: (event: SDKMessage) => {
             callbacks.onSdkEvent(node.id, event);
             appendNodeLog(projectPath, runId, node.id, runtime.attempt,

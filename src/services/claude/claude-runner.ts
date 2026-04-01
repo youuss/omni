@@ -11,6 +11,7 @@ import type {
   HooksConfig,
   PermissionMode,
   SettingSource,
+  SkillBinding,
 } from '../../types';
 
 export const FULL_COMMAND_LOG_STORAGE_KEY = 'omni.show-full-claude-command';
@@ -38,6 +39,7 @@ export interface RunAgentOptions {
   mcpServers?: Record<string, McpServerConfig>;
   hooks?: HooksConfig;
   includePartialMessages?: boolean;
+  skills?: SkillBinding[];
 }
 
 function isBenignStdinWarning(text: string): boolean {
@@ -69,6 +71,7 @@ export async function runAgent(
     mcpServers,
     hooks,
     includePartialMessages,
+    skills,
   } = options;
 
   // Build RunRequest
@@ -86,6 +89,7 @@ export async function runAgent(
   if (mcpServers && Object.keys(mcpServers).length > 0) runRequest.mcpServers = mcpServers;
   if (hooks && Object.keys(hooks).length > 0) runRequest.hooks = hooks;
   if (includePartialMessages) runRequest.includePartialMessages = true;
+  if (skills && skills.length > 0) runRequest.skills = skills;
 
   // Handle session resume
   if (resume && runId && agentNames.length === 1) {

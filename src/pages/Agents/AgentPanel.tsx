@@ -48,6 +48,8 @@ import {
   deleteAgent,
   type AgentInfo,
 } from '../../services/agent-service';
+import { scanSkills, loadSkillPoolConfig } from '../../services/skill-service';
+import type { SkillMeta } from '../../types/skill';
 const ALL_TOOLS = [
   'Read', 'Edit', 'Write', 'Bash', 'Glob', 'Grep',
   'Agent', 'Notebook', 'WebSearch', 'WebFetch',
@@ -91,6 +93,8 @@ export default function AgentPanel({ projectPath }: AgentPanelProps) {
   const [configMaxTurns, setConfigMaxTurns] = useState(20);
   const [configPromptTemplate, setConfigPromptTemplate] = useState('');
   const [configSaving, setConfigSaving] = useState(false);
+  const [configSkills, setConfigSkills] = useState<string[]>([]);
+  const [availableSkills, setAvailableSkills] = useState<SkillMeta[]>([]);
 
   const loadAgents = async (pp: string) => {
     setLoading(true);
@@ -148,10 +152,19 @@ export default function AgentPanel({ projectPath }: AgentPanelProps) {
       setConfigTools(config.allowedTools);
       setConfigMaxTurns(config.maxTurns);
       setConfigPromptTemplate(config.promptTemplate ?? '');
+      setConfigSkills(config.skills ?? []);
     } else {
       setConfigTools(['Read', 'Glob', 'Grep']);
       setConfigMaxTurns(20);
       setConfigPromptTemplate('');
+      setConfigSkills([]);
+    }
+    if (projectPath) {
+      const [allSkills, poolConfig] = await Promise.all([
+        scanSkills(projectPath), loadSkillPoolConfig(projectPath),
+      ]);
+      const enabledSet = new Set(poolConfig.enabled);
+      setAvailableSkills(allSkills.filter((s) => enabledSet.has(s.id)));
     }
     setConfigAgent(agent);
   };
@@ -164,6 +177,7 @@ export default function AgentPanel({ projectPath }: AgentPanelProps) {
         allowedTools: configTools,
         maxTurns: configMaxTurns,
         promptTemplate: configPromptTemplate,
+        skills: configSkills,
       });
       toast.success('Config saved');
       setConfigAgent(null);
@@ -343,6 +357,25 @@ export default function AgentPanel({ projectPath }: AgentPanelProps) {
             </div>
             <div className="space-y-1.5"><Label className="text-xs">Max Turns</Label><Input type="number" min={1} max={200} value={configMaxTurns} onChange={(e) => setConfigMaxTurns(Number(e.target.value))} className="w-32" /></div>
             <div className="space-y-1.5"><Label className="text-xs">Prompt Template</Label><Textarea placeholder="Use {{runId}} to reference the current run..." className="font-mono text-xs min-h-[60px]" value={configPromptTemplate} onChange={(e) => setConfigPromptTemplate(e.target.value)} /></div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Bound Skills</Label>
+              {availableSkills.length === 0 ? (
+                <p className="text-[10px] text-muted-foreground">No enabled skills in pool</p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {availableSkills.map((skill) => (
+                    <button key={skill.id} onClick={() => {
+                      setConfigSkills((prev) =>
+                        prev.includes(skill.id) ? prev.filter((s) => s !== skill.id) : [...prev, skill.id]
+                      );
+                    }}
+                      className={`px-2.5 py-1 rounded-md text-xs border transition-colors cursor-pointer ${configSkills.includes(skill.id) ? 'bg-primary text-primary-foreground border-primary' : 'bg-white/40 border-border/40 text-muted-foreground hover:border-primary/40'}`}>
+                      {skill.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <DialogFooter><Button variant="ghost" onClick={() => setConfigAgent(null)}>Cancel</Button><Button disabled={configSaving} onClick={handleSaveConfig}>{configSaving ? 'Saving...' : 'Save'}</Button></DialogFooter>
         </DialogContent>

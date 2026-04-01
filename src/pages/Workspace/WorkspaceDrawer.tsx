@@ -1,6 +1,6 @@
 import { Drawer } from '@/components/ui/drawer';
 import AgentPanel from '../Agents/AgentPanel';
-import ExtensionPanel from '../Extensions/ExtensionPanel';
+import SkillPanel from '../Skills/SkillPanel';
 import SettingsPanel from '../Settings/SettingsPanel';
 import CodebaseTree from './CodebaseTree';
 import DomainPanel from './DomainPanel';
@@ -66,7 +66,7 @@ export default function WorkspaceDrawer({
       {activePanel === 'agents' && (
         <AgentPanel projectPath={projectPath} />
       )}
-      {activePanel === 'skills' && <ExtensionPanel projectPath={projectPath} />}
+      {activePanel === 'skills' && <SkillPanel projectPath={projectPath} />}
       {activePanel === 'settings' && <SettingsPanel projectPath={projectPath} />}
       {activePanel === 'codebase' && projectPath && (
         <ScrollArea className="h-full">

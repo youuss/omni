@@ -8,9 +8,10 @@
  *
  * Control commands (abort, interrupt) are sent as subsequent stdin JSON lines.
  */
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { query, createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { z } from 'zod';
 import { createInterface } from 'node:readline';
 
 // --- Read first stdin line as RunRequest ---
@@ -53,6 +54,7 @@ const {
   includePartialMessages,
   mcpServers,
   hooks,
+  skills = [],
 } = request;
 
 if (!projectPath || !prompt) {
@@ -102,6 +104,53 @@ async function readEnabledExtensions() {
     }
   }
   return prompts;
+}
+
+// --- Skill Kit MCP Server ---
+
+function createSkillKit(skills) {
+  return createSdkMcpServer({
+    name: 'skill-kit',
+    tools: [
+      tool(
+        'skill',
+        'Discover or load agent skills. Use action "list" to see available skills, or action "load" with a skill name to get detailed instructions.',
+        {
+          action: z.enum(['list', 'load']),
+          name: z.string().optional().describe('Skill name, required when action is "load"'),
+        },
+        async ({ action, name }) => {
+          if (action === 'list') {
+            const index = skills.map(s => ({ name: s.name, description: s.description }));
+            return { content: [{ type: 'text', text: JSON.stringify(index, null, 2) }] };
+          }
+
+          if (!name) {
+            return { content: [{ type: 'text', text: 'Missing "name" parameter for load action' }] };
+          }
+
+          const s = skills.find(sk => sk.name === name || sk.id === name);
+          if (!s) {
+            return {
+              content: [{
+                type: 'text',
+                text: `Skill "${name}" not available. Available: ${skills.map(sk => sk.name).join(', ')}`,
+              }],
+            };
+          }
+
+          const md = await readFile(join(s.path, 'SKILL.md'), 'utf-8');
+          const body = md.replace(/^---[\s\S]*?---\s*/, '');
+          const resolved = body.replace(
+            /(?<=\[.*?\]\()([^)]+)(?=\))/g,
+            (match) => match.startsWith('/') ? match : join(s.path, match)
+          );
+
+          return { content: [{ type: 'text', text: resolved }] };
+        }
+      ),
+    ],
+  });
 }
 
 // Build SDK agents record
@@ -154,6 +203,12 @@ if (resume) options.resume = resume;
 if (includePartialMessages) options.includePartialMessages = true;
 if (mcpServers && Object.keys(mcpServers).length > 0) options.mcpServers = mcpServers;
 if (hooks && Object.keys(hooks).length > 0) options.hooks = hooks;
+
+if (skills.length > 0) {
+  const skillKit = createSkillKit(skills);
+  if (!options.mcpServers) options.mcpServers = {};
+  options.mcpServers['skill-kit'] = skillKit;
+}
 
 // --- Listen for control commands on stdin ---
 

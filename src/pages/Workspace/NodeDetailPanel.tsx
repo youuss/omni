@@ -1,7 +1,7 @@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import {
-  Bot, Shield,
+  Bot, Shield, Sparkles,
   Trash2, X, Check, Loader2, AlertTriangle, Clock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -85,6 +85,21 @@ export default function NodeDetailPanel({
             <span className="text-[10px] opacity-80 truncate ml-auto">{state.error}</span>
           )}
         </div>
+
+        {/* Bound Skills */}
+        {node.agent?.overrides?.skills && node.agent.overrides.skills.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Skills</p>
+            <div className="flex flex-wrap gap-1">
+              {node.agent.overrides.skills.map((skillId) => (
+                <Badge key={skillId} variant="secondary" className="text-[9px] h-4 px-1.5 gap-0.5">
+                  <Sparkles className="w-2 h-2" />
+                  {skillId}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Remove */}
         <div className="pt-1">

@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { checkClaudeAvailable } from '../../services/claude/claude-runner';
 import { HarnessExecutor } from '../../services/harness-executor';
+import { scanSkills } from '../../services/skill-service';
 import { writeRunFile } from '../../services/run-service';
 import { useHarnessStore } from '../../stores/harnessStore';
 import { useOutputStore } from '../../stores/outputStore';
@@ -63,11 +64,14 @@ export function useHarnessRunner(options: UseHarnessRunnerOptions) {
     clearOutput();
     appendLine('system', `> Executing harness "${currentHarness.name}" (${currentHarness.nodes.length} nodes)`);
 
+    const allSkills = await scanSkills(projectPath);
+
     const exec = new HarnessExecutor({
       projectPath,
       runId,
       harness: currentHarness,
       agents,
+      skills: allSkills,
       callbacks: {
         onNodeStatusChange: (nodeId, status, error) => {
           setNodeStatus(nodeId, status, error);

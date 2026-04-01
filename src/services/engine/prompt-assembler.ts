@@ -1,5 +1,6 @@
 import type { HarnessNode, HarnessConnection, AgentDefinition } from '../../types/harness';
 import type { NodeContext, ConstraintFailure } from '../../types/engine';
+import type { SkillMeta } from '../../types/skill';
 import { resolveContext, formatContextForPrompt } from './context-resolver';
 
 // === AssembleOptions ===
@@ -11,6 +12,7 @@ export interface AssembleOptions {
   connections: HarnessConnection[];
   allContexts: Record<string, NodeContext>;
   extensions?: string[];
+  skills?: SkillMeta[];
   constraintFailure?: ConstraintFailure;
 }
 
@@ -86,6 +88,16 @@ export function assemblePrompt(options: AssembleOptions): string {
         parts.push(ext);
       }
     }
+  }
+
+  // 2.5 Skill metadata index (Level 1)
+  const { skills } = options;
+  if (skills && skills.length > 0) {
+    const index = skills.map((s) => `- **${s.name}**: ${s.description}`).join('\n');
+    parts.push(
+      `## Available Skills\n\n${index}\n\n` +
+      'Use the `skill` tool with action "load" and the skill name to get detailed instructions when relevant.'
+    );
   }
 
   // 3. Upstream context
