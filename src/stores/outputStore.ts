@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { SDKMessage } from '../types';
+import type { StreamMessage } from '../types';
 
 interface OutputLine {
   id: number;
@@ -11,12 +11,12 @@ interface OutputLine {
 
 interface OutputState {
   lines: OutputLine[];
-  rawEvents: SDKMessage[];
+  rawEvents: StreamMessage[];
   partialText: string;
   isStreaming: boolean;
 
   appendLine: (type: OutputLine['type'], content: string, nodeId?: string) => void;
-  appendEvent: (event: SDKMessage, nodeId?: string) => void;
+  appendEvent: (event: StreamMessage, nodeId?: string) => void;
   clear: () => void;
 }
 
@@ -26,7 +26,7 @@ function makeLine(type: OutputLine['type'], content: string, nodeId?: string): O
   return { id: ++lineCounter, type, content, timestamp: Date.now(), nodeId };
 }
 
-function extractLinesFromMessage(msg: SDKMessage): OutputLine[] {
+function extractLinesFromMessage(msg: StreamMessage): OutputLine[] {
   switch (msg.type) {
     case 'assistant': {
       const content = (msg as { message?: { content?: Array<{ type: string; text?: string; name?: string; input?: unknown }> } })

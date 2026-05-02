@@ -1,12 +1,12 @@
 import { StateMachine } from './engine/state-machine';
 import type { HarnessDefinition, AgentDefinition, NodeStatus } from '../types/harness';
 import type { StateMachineCallbacks } from '../types/engine';
-import type { SDKMessage } from '../types/claude';
+import type { StreamMessage } from '../types/claude';
 
 export interface ExecutorCallbacks {
   onNodeStatusChange: (nodeId: string, status: NodeStatus, error?: string) => void;
   onNodeOutputs: (nodeId: string, outputs: Record<string, string>) => void;
-  onEvent: (nodeId: string, event: SDKMessage) => void;
+  onEvent: (nodeId: string, event: StreamMessage) => void;
   onStatus: (nodeId: string, text: string) => void;
   onError: (nodeId: string, text: string) => void;
   onGateWait: (nodeId: string, message?: string) => Promise<boolean>;
@@ -34,8 +34,8 @@ export class HarnessExecutor {
       onNodeContext: (nodeId, context) => {
         opts.callbacks.onNodeOutputs(nodeId, context.outputs);
       },
-      onSdkEvent: (nodeId, event) => {
-        opts.callbacks.onEvent(nodeId, event as SDKMessage);
+      onStreamEvent: (nodeId, event) => {
+        opts.callbacks.onEvent(nodeId, event as StreamMessage);
       },
       onLogEvent: () => {},
       onExecutionEvent: () => {},

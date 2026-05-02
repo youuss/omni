@@ -34,7 +34,7 @@ export function LogViewer({ projectPath, runId, nodeId, maxAttempt }: LogViewerP
           color: event.exitCode === 0 ? 'text-emerald-400' : 'text-red-400',
           text: `■ Node ended (exit: ${event.exitCode}, ${event.durationMs}ms)`,
         };
-      case 'sdk_message':
+      case 'stream_message':
         return { color: 'text-foreground/80', text: JSON.stringify(event.data).slice(0, 200) };
       case 'constraint_check':
         return {

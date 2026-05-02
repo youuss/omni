@@ -3,11 +3,11 @@ import { invoke } from '@tauri-apps/api/core';
 import { join } from '@tauri-apps/api/path';
 import { parseStreamLine, extractSessionId } from './stream-parser';
 import { saveSession, getSession } from './session-store';
-import type { AgentRunHandle, SDKMessage } from '../../types';
+import type { AgentRunHandle, StreamMessage } from '../../types';
 
 export const FULL_COMMAND_LOG_STORAGE_KEY = 'omni.show-full-claude-command';
 
-export type EventCallback = (event: SDKMessage) => void;
+export type EventCallback = (event: StreamMessage) => void;
 export type ErrorCallback = (text: string) => void;
 export type DoneCallback = (code: number | null) => void;
 export type StatusCallback = (text: string) => void;
@@ -147,7 +147,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunHandle
     const event = parseStreamLine(line);
     if (!event) {
       if (line.trim()) {
-        onEvent({ type: 'raw', text: line.trim() } as SDKMessage);
+        onEvent({ type: 'raw', text: line.trim() } as StreamMessage);
       }
       return;
     }

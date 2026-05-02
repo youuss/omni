@@ -1,20 +1,20 @@
-import type { SDKMessage } from '../../types';
+import type { StreamMessage } from '../../types';
 
-export function parseStreamLine(line: string): SDKMessage | null {
+export function parseStreamLine(line: string): StreamMessage | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
 
   try {
-    return JSON.parse(trimmed) as SDKMessage;
+    return JSON.parse(trimmed) as StreamMessage;
   } catch {
     return null;
   }
 }
 
 /**
- * Extract displayable text from an SDK message.
+ * Extract displayable text from a stream message.
  */
-export function extractTextFromMessage(message: SDKMessage): string | null {
+export function extractTextFromMessage(message: StreamMessage): string | null {
   if (message.type === 'assistant' && 'message' in message) {
     const content = (message as { message?: { content?: Array<{ type: string; text?: string }> } })
       .message?.content;
@@ -34,9 +34,9 @@ export function extractTextFromMessage(message: SDKMessage): string | null {
 }
 
 /**
- * Extract session_id from any SDK message.
+ * Extract session_id from any stream message.
  */
-export function extractSessionId(message: SDKMessage): string | null {
+export function extractSessionId(message: StreamMessage): string | null {
   if ('session_id' in message && typeof message.session_id === 'string') {
     return message.session_id;
   }

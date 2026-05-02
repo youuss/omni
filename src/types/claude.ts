@@ -7,10 +7,10 @@ export interface AgentConfig {
   maxTurns: number;
 }
 
-// --- SDK-aligned message types ---
+// --- Stream message types (from claude --output-format stream-json) ---
 
-/** Matches SDK SDKAssistantMessage */
-export interface SDKAssistantMessage {
+/** Assistant message */
+export interface AssistantMessage {
   type: 'assistant';
   uuid: string;
   session_id: string;
@@ -25,8 +25,8 @@ export interface SDKAssistantMessage {
   parent_tool_use_id: string | null;
 }
 
-/** Matches SDK SDKUserMessage */
-export interface SDKUserMessage {
+/** User message */
+export interface UserMessage {
   type: 'user';
   uuid?: string;
   session_id: string;
@@ -41,8 +41,8 @@ export interface SDKUserMessage {
   parent_tool_use_id: string | null;
 }
 
-/** Matches SDK SDKResultMessage (success) */
-export interface SDKResultSuccess {
+/** Result message (success) */
+export interface ResultSuccess {
   type: 'result';
   subtype: 'success';
   uuid: string;
@@ -56,8 +56,8 @@ export interface SDKResultSuccess {
   usage: { input_tokens: number; output_tokens: number };
 }
 
-/** Matches SDK SDKResultMessage (error) */
-export interface SDKResultError {
+/** Result message (error) */
+export interface ResultError {
   type: 'result';
   subtype: 'error_max_turns' | 'error_during_execution' | 'error_max_budget_usd';
   uuid: string;
@@ -71,8 +71,8 @@ export interface SDKResultError {
   errors: string[];
 }
 
-/** Matches SDK SDKSystemMessage */
-export interface SDKSystemMessage {
+/** System init message */
+export interface SystemMessage {
   type: 'system';
   subtype: 'init';
   uuid: string;
@@ -83,8 +83,8 @@ export interface SDKSystemMessage {
   permissionMode: string;
 }
 
-/** Matches SDK SDKPartialAssistantMessage (stream_event) */
-export interface SDKStreamEvent {
+/** Partial assistant stream event */
+export interface StreamEvent {
   type: 'stream_event';
   event: unknown;
   parent_tool_use_id: string | null;
@@ -92,14 +92,14 @@ export interface SDKStreamEvent {
   session_id: string;
 }
 
-/** Union of all SDK message types we handle */
-export type SDKMessage =
-  | SDKAssistantMessage
-  | SDKUserMessage
-  | SDKResultSuccess
-  | SDKResultError
-  | SDKSystemMessage
-  | SDKStreamEvent
+/** Union of all stream message types */
+export type StreamMessage =
+  | AssistantMessage
+  | UserMessage
+  | ResultSuccess
+  | ResultError
+  | SystemMessage
+  | StreamEvent
   | { type: string; [key: string]: unknown }; // catch-all for compact_boundary, etc.
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';

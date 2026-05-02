@@ -14,7 +14,7 @@ import type {
   ExecutionState,
   StateMachineCallbacks,
 } from '../../types/engine';
-import type { AgentRunHandle, SDKMessage } from '../../types/claude';
+import type { AgentRunHandle, StreamMessage } from '../../types/claude';
 import { writeRunFile } from '../run-service';
 
 const DEFAULT_MAX_RETRIES = 3;
@@ -175,10 +175,10 @@ export class StateMachine {
           agentName: agent.name,
           prompt,
           runId,
-          onEvent: (event: SDKMessage) => {
-            callbacks.onSdkEvent(node.id, event);
+          onEvent: (event: StreamMessage) => {
+            callbacks.onStreamEvent(node.id, event);
             appendNodeLog(projectPath, runId, node.id, runtime.attempt,
-              createLogEvent('sdk_message', { data: event })).catch(() => {});
+              createLogEvent('stream_message', { data: event })).catch(() => {});
           },
           onError: (text: string) => callbacks.onError(node.id, text),
           onStatus: (text: string) => callbacks.onStatus(node.id, text),

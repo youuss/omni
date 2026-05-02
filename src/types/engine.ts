@@ -1,5 +1,5 @@
 import type { NodeStatus } from './harness';
-import type { SDKMessage } from './claude';
+import type { StreamMessage } from './claude';
 
 // === Node Context ===
 
@@ -29,7 +29,7 @@ export interface ConstraintFailure {
 export type LogEvent =
   | { type: 'node_start'; nodeId: string; attempt: number; ts: number }
   | { type: 'node_end'; nodeId: string; exitCode: number | null; durationMs: number; ts: number }
-  | { type: 'sdk_message'; data: SDKMessage; ts: number }
+  | { type: 'stream_message'; data: StreamMessage; ts: number }
   | { type: 'constraint_check'; name: string; passed: boolean; exitCode?: number; stdout?: string; stderr?: string; ts: number }
   | { type: 'constraint_retry'; attempt: number; reason: string; ts: number }
   | { type: 'condition_eval'; nodeId: string; expression: string; result: string; branch: string; ts: number }
@@ -65,7 +65,7 @@ export interface ExecutionState {
 export interface StateMachineCallbacks {
   onNodeStatusChange: (nodeId: string, status: NodeStatus, attempt: number, error?: string) => void;
   onNodeContext: (nodeId: string, context: NodeContext) => void;
-  onSdkEvent: (nodeId: string, event: SDKMessage) => void;
+  onStreamEvent: (nodeId: string, event: StreamMessage) => void;
   onLogEvent: (event: LogEvent) => void;
   onExecutionEvent: (event: ExecutionLogEvent) => void;
   onGateWait: (nodeId: string, message?: string) => Promise<boolean>;
