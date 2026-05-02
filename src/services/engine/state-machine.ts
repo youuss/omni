@@ -163,7 +163,7 @@ export class StateMachine {
       connections: harness.connections,
       allContexts: Object.fromEntries(this.contexts),
       constraintFailure: runtime.constraintFailure,
-    });
+    }) || 'Execute the task as instructed by your system prompt.';
 
     const startTime = Date.now();
 
