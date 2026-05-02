@@ -13,11 +13,3 @@ export interface SkillMeta {
 export interface SkillPoolConfig {
   enabled: string[];
 }
-
-/** Skill binding passed to sdk-runner */
-export interface SkillBinding {
-  id: string;
-  name: string;
-  description: string;
-  path: string;
-}

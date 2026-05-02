@@ -2,7 +2,6 @@ import { StateMachine } from './engine/state-machine';
 import type { HarnessDefinition, AgentDefinition, NodeStatus } from '../types/harness';
 import type { StateMachineCallbacks } from '../types/engine';
 import type { SDKMessage } from '../types/claude';
-import type { SkillMeta } from '../types/skill';
 
 export interface ExecutorCallbacks {
   onNodeStatusChange: (nodeId: string, status: NodeStatus, error?: string) => void;
@@ -20,8 +19,6 @@ interface ExecutorOptions {
   harness: HarnessDefinition;
   agents: AgentDefinition[];
   callbacks: ExecutorCallbacks;
-  extensions?: string[];
-  skills?: SkillMeta[];
   startFromNodeId?: string;
   stepMode?: boolean;
 }
@@ -56,8 +53,6 @@ export class HarnessExecutor {
       harness: opts.harness,
       agents: opts.agents,
       callbacks: smCallbacks,
-      extensions: opts.extensions,
-      skills: opts.skills,
       startFromNodeId: opts.startFromNodeId,
       stepMode: opts.stepMode,
     });

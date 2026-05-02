@@ -1,18 +1,9 @@
 import { Command } from '@tauri-apps/plugin-shell';
-import { resolveResource } from '@tauri-apps/api/path';
+import { invoke } from '@tauri-apps/api/core';
+import { join } from '@tauri-apps/api/path';
 import { parseStreamLine, extractSessionId } from './stream-parser';
 import { saveSession, getSession } from './session-store';
-import type {
-  AgentRunHandle,
-  SDKMessage,
-  RunRequest,
-  AgentOverride,
-  McpServerConfig,
-  HooksConfig,
-  PermissionMode,
-  SettingSource,
-  SkillBinding,
-} from '../../types';
+import type { AgentRunHandle, SDKMessage } from '../../types';
 
 export const FULL_COMMAND_LOG_STORAGE_KEY = 'omni.show-full-claude-command';
 
@@ -23,23 +14,45 @@ export type StatusCallback = (text: string) => void;
 
 export interface RunAgentOptions {
   projectPath: string;
-  agentNames: string[];
+  agentName: string;
   prompt: string;
   runId?: string;
+  maxTurns?: number;
+  maxBudgetUsd?: number;
+  model?: string;
+  allowedTools?: string[];
   onEvent: EventCallback;
   onError?: ErrorCallback;
   onStatus?: StatusCallback;
   onDone?: DoneCallback;
-  overrides?: Record<string, AgentOverride>;
   resume?: boolean;
-  model?: string;
-  maxBudgetUsd?: number;
-  permissionMode?: PermissionMode;
-  settingSources?: SettingSource[];
-  mcpServers?: Record<string, McpServerConfig>;
-  hooks?: HooksConfig;
-  includePartialMessages?: boolean;
-  skills?: SkillBinding[];
+}
+
+function quoteCliArg(arg: string): string {
+  if (arg.length === 0) return '""';
+  if (!/[^\w@%+=:,./-]/.test(arg)) return arg;
+  return `"${arg.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function renderCommandPreview(args: string[], promptIndex: number): string {
+  const rendered = args.map((arg, idx) => {
+    if (idx === promptIndex) {
+      const singleLine = arg.replace(/\s+/g, ' ').trim();
+      const maxLen = 200;
+      const clipped = singleLine.length > maxLen ? `${singleLine.slice(0, maxLen)}...` : singleLine;
+      return quoteCliArg(clipped);
+    }
+    return quoteCliArg(arg);
+  });
+  return `claude ${rendered.join(' ')}`;
+}
+
+function shouldShowFullCommand(): boolean {
+  try {
+    return window.localStorage.getItem(FULL_COMMAND_LOG_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
 }
 
 function isBenignStdinWarning(text: string): boolean {
@@ -50,87 +63,101 @@ function isBenignStdinWarning(text: string): boolean {
   );
 }
 
-export async function runAgent(
-  options: RunAgentOptions
-): Promise<AgentRunHandle> {
+export async function runAgent(options: RunAgentOptions): Promise<AgentRunHandle> {
   const {
     projectPath,
-    agentNames,
+    agentName,
     prompt,
     runId,
+    maxTurns,
+    maxBudgetUsd,
+    model,
+    allowedTools,
     onEvent,
     onError,
     onStatus,
     onDone,
-    overrides,
     resume = false,
-    model,
-    maxBudgetUsd,
-    permissionMode = 'bypassPermissions',
-    settingSources = ['project'],
-    mcpServers,
-    hooks,
-    includePartialMessages,
-    skills,
   } = options;
 
-  // Build RunRequest
-  const runRequest: RunRequest = {
-    projectPath,
-    prompt,
-    agents: agentNames,
-    permissionMode,
-    settingSources,
-  };
+  // Find agent definition file: .claude/agents/{Name}.md
+  const agentDefPath = await join(projectPath, '.claude', 'agents', `${agentName}.md`);
+  const agentDefExists: boolean = await invoke<string>('read_text_file', { path: agentDefPath })
+    .then(() => true)
+    .catch(() => false);
 
-  if (overrides && Object.keys(overrides).length > 0) runRequest.overrides = overrides;
-  if (model) runRequest.model = model;
-  if (maxBudgetUsd) runRequest.maxBudgetUsd = maxBudgetUsd;
-  if (mcpServers && Object.keys(mcpServers).length > 0) runRequest.mcpServers = mcpServers;
-  if (hooks && Object.keys(hooks).length > 0) runRequest.hooks = hooks;
-  if (includePartialMessages) runRequest.includePartialMessages = true;
-  if (skills && skills.length > 0) runRequest.skills = skills;
+  if (agentDefExists) {
+    onStatus?.(`[agent] Definition file: ${agentDefPath}`);
+  } else {
+    onStatus?.(`[agent] No definition file ${agentDefPath}, using Claude defaults`);
+  }
 
-  // Handle session resume
-  if (resume && runId && agentNames.length === 1) {
-    const sessionId = getSession(runId, agentNames[0]);
+  const args: string[] = [
+    '--print',
+    '--output-format', 'stream-json',
+    '--verbose',
+    '--dangerously-skip-permissions',
+  ];
+
+  if (maxTurns) {
+    args.push('--max-turns', String(maxTurns));
+  }
+
+  if (maxBudgetUsd) {
+    args.push('--max-budget-usd', String(maxBudgetUsd));
+  }
+
+  if (model) {
+    args.push('--model', model);
+  }
+
+  // Agent prompt as system prompt file
+  if (agentDefExists) {
+    args.push('--system-prompt-file', agentDefPath);
+  }
+
+  // Session resume
+  if (resume && runId) {
+    const sessionId = getSession(runId, agentName);
     if (sessionId) {
-      runRequest.resume = sessionId;
+      args.push('--resume', sessionId);
     }
   }
 
-  let runnerScript: string;
-  if (import.meta.env.DEV) {
-    // In dev, resolveResource points into src-tauri/target/debug/ which lacks bundled resources.
-    // Resolve from the debug dir up to the project root.
-    const debugDir = await resolveResource('');
-    runnerScript = debugDir.replace(/src-tauri\/target\/debug\/?$/, 'scripts/sdk-runner.mjs');
-  } else {
-    runnerScript = await resolveResource('scripts/sdk-runner.mjs');
+  // Prompt as last positional arg
+  const promptIndex = args.length;
+  args.push(prompt);
+
+  // Allowed tools
+  if (allowedTools && allowedTools.length > 0) {
+    args.push('--allowedTools', ...allowedTools);
   }
 
-  onStatus?.(`[sdk] Starting agents [${agentNames.join(', ')}] via Agent SDK`);
+  onStatus?.(`[command] ${renderCommandPreview(args, promptIndex)}`);
+  if (shouldShowFullCommand()) {
+    onStatus?.(`[command:full] claude ${args.map(quoteCliArg).join(' ')}`);
+  }
 
-  const cmd = Command.create('run-sdk-runner', [runnerScript], { cwd: projectPath });
+  const cmd = Command.create('run-claude', args, { cwd: projectPath });
   const startedAt = Date.now();
   let lastActivityAt = startedAt;
 
   cmd.stdout.on('data', (line: string) => {
     lastActivityAt = Date.now();
-    const message = parseStreamLine(line);
-    if (!message) {
+    const event = parseStreamLine(line);
+    if (!event) {
       if (line.trim()) {
         onEvent({ type: 'raw', text: line.trim() } as SDKMessage);
       }
       return;
     }
 
-    const sid = extractSessionId(message);
-    if (sid && runId && agentNames.length > 0) {
-      saveSession(runId, agentNames[0], sid);
+    const sid = extractSessionId(event);
+    if (sid && runId) {
+      saveSession(runId, agentName, sid);
     }
 
-    onEvent(message);
+    onEvent(event);
   });
 
   cmd.stderr.on('data', (line: string) => {
@@ -145,19 +172,14 @@ export async function runAgent(
   });
 
   const child = await cmd.spawn();
-  onStatus?.(`[sdk] Spawned sdk-runner pid=${child.pid}`);
-
-  // Write RunRequest as first stdin line
-  await child.write(JSON.stringify(runRequest) + '\n');
+  onStatus?.(`[spawn] pid=${child.pid}`);
 
   const heartbeat = setInterval(() => {
     const now = Date.now();
     const idleSec = Math.floor((now - lastActivityAt) / 1000);
     if (idleSec < 15) return;
     const elapsedSec = Math.floor((now - startedAt) / 1000);
-    onStatus?.(
-      `Running... elapsed ${elapsedSec}s, last output ${idleSec}s ago (pid=${child.pid})`
-    );
+    onStatus?.(`Running... elapsed ${elapsedSec}s, last output ${idleSec}s ago (pid=${child.pid})`);
   }, 15000);
 
   cmd.on('close', (data: { code: number | null }) => {
@@ -166,10 +188,7 @@ export async function runAgent(
   });
 
   return {
-    abort: () => {
-      child.write('{"cmd":"abort"}\n').catch(() => {});
-      setTimeout(() => child.kill(), 1000);
-    },
+    abort: () => child.kill(),
     pid: child.pid,
   };
 }

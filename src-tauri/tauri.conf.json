@@ -27,7 +27,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "resources": ["resources/**/*", "../scripts/sdk-runner.mjs"],
+    "resources": ["resources/**/*"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

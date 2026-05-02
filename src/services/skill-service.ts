@@ -1,6 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { SkillMeta, SkillPoolConfig, SkillBinding } from '../types/skill';
-import type { AgentDefinition, AgentNodeConfig } from '../types/harness';
+import type { SkillMeta, SkillPoolConfig } from '../types/skill';
 
 const SKILLS_CONFIG_FILE = '.harness/skills.json';
 
@@ -105,24 +104,3 @@ export async function saveSkillContent(
   await invoke('write_skill_file', { projectPath, skillId, content });
 }
 
-export function resolveAgentSkills(
-  agent: AgentDefinition,
-  nodeOverrides?: AgentNodeConfig['overrides'],
-): string[] {
-  return nodeOverrides?.skills ?? agent.skills ?? [];
-}
-
-export function buildSkillBindings(
-  skillIds: string[],
-  allSkills: SkillMeta[],
-): SkillBinding[] {
-  return skillIds
-    .map((id) => allSkills.find((s) => s.id === id))
-    .filter((s): s is SkillMeta => s !== undefined)
-    .map((s) => ({
-      id: s.id,
-      name: s.name,
-      description: s.description,
-      path: s.path,
-    }));
-}

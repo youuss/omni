@@ -40,7 +40,6 @@ export interface AgentNodeConfig {
     allowedTools?: string[];
     promptExtra?: string;
     permissionMode?: PermissionMode;
-    skills?: string[];
   };
   routing?: {
     outputKey: string;

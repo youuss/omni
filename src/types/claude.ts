@@ -1,5 +1,3 @@
-import type { SkillBinding } from './skill';
-
 export type AgentName = string;
 
 export interface AgentConfig {
@@ -104,72 +102,9 @@ export type SDKMessage =
   | SDKStreamEvent
   | { type: string; [key: string]: unknown }; // catch-all for compact_boundary, etc.
 
+export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+
 export interface AgentRunHandle {
   abort: () => void;
   pid: number;
-}
-
-// --- RunRequest: Frontend → Sidecar ---
-
-export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
-export type SettingSource = 'user' | 'project' | 'local';
-
-export interface AgentOverride {
-  maxTurns?: number;
-  allowedTools?: string[];
-  model?: 'sonnet' | 'opus' | 'haiku' | 'inherit';
-  promptExtra?: string;
-  skills?: string[];
-}
-
-export interface McpServerConfig {
-  type?: 'stdio' | 'sse' | 'http';
-  command?: string;
-  args?: string[];
-  env?: Record<string, string>;
-  url?: string;
-  headers?: Record<string, string>;
-}
-
-export type HookEvent =
-  | 'PreToolUse'
-  | 'PostToolUse'
-  | 'PostToolUseFailure'
-  | 'Notification'
-  | 'Stop'
-  | 'SubagentStart'
-  | 'SubagentStop';
-
-export interface HookEntry {
-  matcher?: string;
-  command: string;
-}
-
-export type HooksConfig = Partial<Record<HookEvent, HookEntry[]>>;
-
-export interface RunRequest {
-  projectPath: string;
-  prompt: string;
-  agents: string[];
-  maxTurns?: number;
-  maxBudgetUsd?: number;
-  model?: string;
-  permissionMode?: PermissionMode;
-  settingSources?: SettingSource[];
-  resume?: string;
-  overrides?: Record<string, AgentOverride>;
-  includePartialMessages?: boolean;
-  mcpServers?: Record<string, McpServerConfig>;
-  hooks?: HooksConfig;
-  skills?: SkillBinding[];
-  constraintContext?: {
-    failure?: {
-      constraintName: string;
-      command?: string;
-      exitCode?: number;
-      stdout?: string;
-      stderr?: string;
-    };
-    upstreamOutputs?: Record<string, string>;
-  };
 }

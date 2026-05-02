@@ -15,11 +15,6 @@
           "name": "run-claude",
           "cmd": "claude",
           "args": true
-        },
-        {
-          "name": "run-sdk-runner",
-          "cmd": "node",
-          "args": true
         }
       ]
     },
@@ -29,11 +24,6 @@
         {
           "name": "run-claude",
           "cmd": "claude",
-          "args": true
-        },
-        {
-          "name": "run-sdk-runner",
-          "cmd": "node",
           "args": true
         }
       ]

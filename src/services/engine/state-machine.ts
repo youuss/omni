@@ -15,8 +15,6 @@ import type {
   StateMachineCallbacks,
 } from '../../types/engine';
 import type { AgentRunHandle, SDKMessage } from '../../types/claude';
-import type { SkillMeta } from '../../types/skill';
-import { resolveAgentSkills, buildSkillBindings } from '../skill-service';
 import { writeRunFile } from '../run-service';
 
 const DEFAULT_MAX_RETRIES = 3;
@@ -27,8 +25,6 @@ export interface StateMachineOptions {
   harness: HarnessDefinition;
   agents: AgentDefinition[];
   callbacks: StateMachineCallbacks;
-  extensions?: string[];
-  skills?: SkillMeta[];
   startFromNodeId?: string;
   stepMode?: boolean;
 }
@@ -152,7 +148,7 @@ export class StateMachine {
   }
 
   private executeAgentNode(node: HarnessNode, runtime: NodeRuntime): Promise<void> {
-    const { harness, agents, callbacks, projectPath, runId, extensions, skills } = this.opts;
+    const { harness, agents, callbacks, projectPath, runId } = this.opts;
     const agentId = node.agent?.agentId || '';
     const agent = agents.find((a) => a.id === agentId || a.name === agentId);
     if (!agent) {
@@ -160,35 +156,25 @@ export class StateMachine {
       return Promise.resolve();
     }
 
-    // Resolve bound skills for this node
-    const skillIds = resolveAgentSkills(agent, node.agent?.overrides);
-    const boundSkills = skills ? buildSkillBindings(skillIds, skills) : [];
-    const nodeSkills = skills?.filter((s) => skillIds.includes(s.id));
-
-    // Assemble prompt (with skill metadata for Level 1)
+    // Assemble prompt (upstream context + constraints + promptExtra only)
     const prompt = assemblePrompt({
       node,
-      agent,
       allNodes: harness.nodes,
       connections: harness.connections,
       allContexts: Object.fromEntries(this.contexts),
-      extensions,
-      skills: nodeSkills,
       constraintFailure: runtime.constraintFailure,
     });
 
     const startTime = Date.now();
 
-    // Wrap in a promise that resolves when the agent run completes
     return new Promise<void>((resolve, reject) => {
       appendNodeLog(projectPath, runId, node.id, runtime.attempt,
         createLogEvent('node_start', { nodeId: node.id, attempt: runtime.attempt }))
         .then(() => runAgent({
           projectPath,
-          agentNames: [agent.name],
+          agentName: agent.name,
           prompt,
           runId,
-          skills: boundSkills,
           onEvent: (event: SDKMessage) => {
             callbacks.onSdkEvent(node.id, event);
             appendNodeLog(projectPath, runId, node.id, runtime.attempt,
@@ -201,9 +187,10 @@ export class StateMachine {
               .then(resolve)
               .catch(reject);
           },
-          model: node.agent?.overrides?.model || harness.defaults?.model,
+          maxTurns: node.agent?.overrides?.maxTurns || agent.maxTurns,
           maxBudgetUsd: node.agent?.overrides?.maxBudgetUsd || harness.defaults?.maxBudgetUsd,
-          permissionMode: node.agent?.overrides?.permissionMode || harness.defaults?.permissionMode || 'bypassPermissions',
+          model: node.agent?.overrides?.model || harness.defaults?.model,
+          allowedTools: node.agent?.overrides?.allowedTools || agent.allowedTools,
         }))
         .then((handle) => {
           this.activeHandles.set(node.id, handle);
