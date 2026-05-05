@@ -5,21 +5,25 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/user/omni-fabric-daemon/internal/config"
+	"github.com/user/omni-fabric-daemon/internal/sync"
 )
 
 func main() {
-	apiURL := os.Getenv("API_URL")
-	if apiURL == "" {
-		apiURL = "http://localhost:8080"
-	}
+	cfg := config.Load()
 
-	log.Printf("Omni Fabric Daemon starting")
-	log.Printf("API URL: %s", apiURL)
+	wsClient := sync.NewWSClient(cfg.APIURL, cfg.AuthToken)
+	wsClient.OnMessage(func(msg map[string]any) {
+		log.Printf("Received: %v", msg)
+	})
 
-	// Wait for shutdown signal
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	log.Printf("Daemon starting, API: %s", cfg.APIURL)
 
-	sig := <-sigCh
-	log.Printf("Received signal %v, shutting down...", sig)
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	wsClient.Close()
+	log.Println("Daemon shut down")
 }
