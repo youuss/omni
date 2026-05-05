@@ -4,18 +4,29 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/user/omni-fabric-api/internal/config"
+	"github.com/user/omni-fabric-api/internal/db"
 )
 
 func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+	cfg := config.Load()
+
+	// Connect to database
+	database, err := db.Connect(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("failed to connect to database: %v", err)
 	}
+	defer database.Close()
+
+	// Run migrations
+	if err := db.RunMigrations(database, "internal/db/migrations"); err != nil {
+		log.Fatalf("failed to run migrations: %v", err)
+	}
+	log.Println("database migrations applied")
 
 	r := chi.NewRouter()
 
@@ -37,8 +48,8 @@ func main() {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	log.Printf("API server starting on :%s", port)
-	if err := http.ListenAndServe(fmt.Sprintf(":%s", port), r); err != nil {
+	log.Printf("API server starting on :%s", cfg.Port)
+	if err := http.ListenAndServe(fmt.Sprintf(":%s", cfg.Port), r); err != nil {
 		log.Fatalf("server failed: %v", err)
 	}
 }
