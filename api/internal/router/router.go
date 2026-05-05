@@ -43,9 +43,13 @@ func New(db *sql.DB, jwtSecret string) *chi.Mux {
 
 	// Repos (protected)
 	projectRepo := repo.NewProjectRepo(db)
+	agentRepo := repo.NewAgentRepo(db)
+	harnessRepo := repo.NewHarnessRepo(db)
 
 	// Handlers (protected)
 	projectHandler := handler.NewProjectHandler(projectRepo)
+	agentHandler := handler.NewAgentHandler(agentRepo)
+	harnessHandler := handler.NewHarnessHandler(harnessRepo)
 
 	// Protected routes
 	r.Group(func(r chi.Router) {
@@ -57,6 +61,21 @@ func New(db *sql.DB, jwtSecret string) *chi.Mux {
 			r.Get("/{id}", projectHandler.Get)
 			r.Put("/{id}", projectHandler.Update)
 			r.Delete("/{id}", projectHandler.Delete)
+		})
+
+		r.Route("/api/projects/{projectId}/agents", func(r chi.Router) {
+			r.Get("/", agentHandler.List)
+			r.Post("/", agentHandler.Create)
+			r.Get("/{id}", agentHandler.Get)
+			r.Delete("/{id}", agentHandler.Delete)
+		})
+
+		r.Route("/api/projects/{projectId}/harnesses", func(r chi.Router) {
+			r.Get("/", harnessHandler.List)
+			r.Post("/", harnessHandler.Create)
+			r.Get("/{id}", harnessHandler.Get)
+			r.Put("/{id}", harnessHandler.UpdateDefinition)
+			r.Delete("/{id}", harnessHandler.Delete)
 		})
 	})
 
