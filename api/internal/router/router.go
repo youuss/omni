@@ -41,11 +41,23 @@ func New(db *sql.DB, jwtSecret string) *chi.Mux {
 	r.Post("/api/auth/register", authHandler.Register)
 	r.Post("/api/auth/login", authHandler.Login)
 
+	// Repos (protected)
+	projectRepo := repo.NewProjectRepo(db)
+
+	// Handlers (protected)
+	projectHandler := handler.NewProjectHandler(projectRepo)
+
 	// Protected routes
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.Auth(jwtSecret))
 
-		// Routes will be added in later tasks
+		r.Route("/api/projects", func(r chi.Router) {
+			r.Get("/", projectHandler.List)
+			r.Post("/", projectHandler.Create)
+			r.Get("/{id}", projectHandler.Get)
+			r.Put("/{id}", projectHandler.Update)
+			r.Delete("/{id}", projectHandler.Delete)
+		})
 	})
 
 	return r
