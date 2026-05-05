@@ -30,12 +30,12 @@ export default function ProjectOverviewPage() {
   useEffect(() => {
     if (projectId) {
       fetchProject(projectId as string);
-      api<Agent[]>(`/projects/${projectId}/agents`).then((a) =>
-        setAgentCount(a.length)
-      );
-      api<Harness[]>(`/projects/${projectId}/harnesses`).then((h) =>
-        setHarnessCount(h.length)
-      );
+      api<Agent[]>(`/projects/${projectId}/agents`)
+        .then((a) => setAgentCount(a.length))
+        .catch(() => {});
+      api<Harness[]>(`/projects/${projectId}/harnesses`)
+        .then((h) => setHarnessCount(h.length))
+        .catch(() => {});
       api<Run[]>(`/runs?project_id=${projectId}`)
         .then((r) => setRunCount(r.length))
         .catch(() => {});
