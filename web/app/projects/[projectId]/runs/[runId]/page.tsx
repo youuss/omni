@@ -8,14 +8,9 @@ import { useHarnessStore } from "@/stores/harness";
 import { ExecutionView } from "@/components/run/ExecutionView";
 import { OutputPanel } from "@/components/run/OutputPanel";
 import { GateApproval } from "@/components/run/GateApproval";
+import { statusBadge } from "@/lib/status";
 
-const statusBadge: Record<string, string> = {
-  pending: "bg-muted-foreground/20 text-muted-foreground",
-  running: "bg-indigo-100 text-indigo-700",
-  completed: "bg-emerald-100 text-emerald-700",
-  failed: "bg-red-100 text-red-700",
-  aborted: "bg-amber-100 text-amber-700",
-};
+const EMPTY_ARRAY: never[] = [];
 
 export default function RunDetailPage() {
   const { projectId, runId } = useParams();
@@ -35,9 +30,11 @@ export default function RunDetailPage() {
   useEffect(() => {
     if (runId) {
       fetchRun(runId as string)
-        .then(() => setLoading(false))
+        .then(() => {
+          setLoading(false);
+          connectWS(runId as string);
+        })
         .catch(() => setLoading(false));
-      connectWS(runId as string);
     }
     return () => {
       disconnectWS();
@@ -98,9 +95,9 @@ export default function RunDetailPage() {
           </button>
           <h1 className="text-sm font-semibold font-mono">{run.id}</h1>
           <span
-            className={`text-[10px] px-2 py-0.5 rounded-full ${statusBadge[run.status] || "bg-muted-foreground/20 text-muted-foreground"}`}
+            className={`text-[10px] px-2 py-0.5 rounded-full ${statusBadge[run.status]?.className || "bg-muted-foreground/20 text-muted-foreground"}`}
           >
-            {run.status}
+            {statusBadge[run.status]?.label || run.status}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -134,8 +131,8 @@ export default function RunDetailPage() {
         <div className="flex-1 relative">
           <ReactFlowProvider>
             <ExecutionView
-              definitionNodes={harness?.definition?.nodes || []}
-              definitionEdges={harness?.definition?.edges || []}
+              definitionNodes={harness?.definition?.nodes || EMPTY_ARRAY}
+              definitionEdges={harness?.definition?.edges || EMPTY_ARRAY}
             />
           </ReactFlowProvider>
         </div>

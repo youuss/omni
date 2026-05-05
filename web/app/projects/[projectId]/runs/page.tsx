@@ -1,17 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useHarnessStore } from "@/stores/harness";
 import { useRunStore, type Run } from "@/stores/run";
-
-const statusBadge: Record<string, string> = {
-  pending: "bg-muted-foreground/20 text-muted-foreground",
-  running: "bg-indigo-100 text-indigo-700",
-  completed: "bg-emerald-100 text-emerald-700",
-  failed: "bg-red-100 text-red-700",
-  aborted: "bg-amber-100 text-amber-700",
-};
+import { statusBadge } from "@/lib/status";
 
 export default function RunsPage() {
   const { projectId } = useParams();
@@ -92,9 +85,9 @@ export default function RunsPage() {
                   </p>
                 </div>
                 <span
-                  className={`text-[10px] px-2 py-0.5 rounded-full ${statusBadge[run.status] || "bg-muted-foreground/20 text-muted-foreground"}`}
+                  className={`text-[10px] px-2 py-0.5 rounded-full ${statusBadge[run.status]?.className || "bg-muted-foreground/20 text-muted-foreground"}`}
                 >
-                  {run.status}
+                  {statusBadge[run.status]?.label || run.status}
                 </span>
               </div>
             </button>

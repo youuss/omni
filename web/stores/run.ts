@@ -91,20 +91,25 @@ export const useRunStore = create<RunState>((set, get) => ({
       } else if (data.type === "stream_event") {
         const nodeId = data.nodeId as string;
         const event = data.event as Record<string, unknown>;
-        set((s) => ({
-          streamEvents: {
-            ...s.streamEvents,
-            [nodeId]: [
-              ...(s.streamEvents[nodeId] || []),
-              {
-                type: event.type as string,
-                content: event.content as string,
-                toolName: event.toolName as string | undefined,
-                timestamp: Date.now(),
-              },
-            ],
-          },
-        }));
+        const MAX_STREAM_EVENTS = 500;
+        set((s) => {
+          const existing = s.streamEvents[nodeId] || [];
+          const next = [
+            ...existing,
+            {
+              type: event.type as string,
+              content: event.content as string,
+              toolName: event.toolName as string | undefined,
+              timestamp: Date.now(),
+            },
+          ];
+          return {
+            streamEvents: {
+              ...s.streamEvents,
+              [nodeId]: next.length > MAX_STREAM_EVENTS ? next.slice(-MAX_STREAM_EVENTS) : next,
+            },
+          };
+        });
       } else if (data.type === "status") {
         set((s) => ({
           current: s.current
