@@ -25,3 +25,8 @@ dist-ssr
 .cursor/*
 design-example/*
 package-lock.json
+
+# Go binaries
+api/server
+daemon/daemon
+*.exe
