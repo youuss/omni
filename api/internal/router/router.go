@@ -45,11 +45,14 @@ func New(db *sql.DB, jwtSecret string) *chi.Mux {
 	projectRepo := repo.NewProjectRepo(db)
 	agentRepo := repo.NewAgentRepo(db)
 	harnessRepo := repo.NewHarnessRepo(db)
+	runRepo := repo.NewRunRepo(db)
 
 	// Handlers (protected)
 	projectHandler := handler.NewProjectHandler(projectRepo)
 	agentHandler := handler.NewAgentHandler(agentRepo)
 	harnessHandler := handler.NewHarnessHandler(harnessRepo)
+	wsHub := handler.NewWSHub()
+	runHandler := handler.NewRunHandler(runRepo, wsHub)
 
 	// Protected routes
 	r.Group(func(r chi.Router) {
@@ -77,6 +80,20 @@ func New(db *sql.DB, jwtSecret string) *chi.Mux {
 			r.Put("/{id}", harnessHandler.UpdateDefinition)
 			r.Delete("/{id}", harnessHandler.Delete)
 		})
+
+		r.Route("/api/harnesses/{harnessId}/runs", func(r chi.Router) {
+			r.Post("/", runHandler.Create)
+		})
+
+		r.Route("/api/runs", func(r chi.Router) {
+			r.Get("/{runId}", runHandler.Get)
+			r.Get("/{runId}/logs", runHandler.GetLogs)
+			r.Post("/{runId}/abort", runHandler.Abort)
+			r.Post("/{runId}/gate/{nodeId}/approve", runHandler.GateApprove)
+			r.Post("/{runId}/gate/{nodeId}/reject", runHandler.GateReject)
+		})
+
+		r.Get("/api/ws/runs/{runId}", wsHub.HandleWS)
 	})
 
 	return r
