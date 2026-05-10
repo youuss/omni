@@ -105,3 +105,41 @@ func (h *WSHub) HandleWS(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+
+// HandleDaemonWS upgrades an HTTP request to a persistent daemon WebSocket
+// connection. The daemon subscribes to the special "daemon" channel and
+// receives execute_run messages when new runs are created.
+func (h *WSHub) HandleDaemonWS(w http.ResponseWriter, r *http.Request) {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("daemon ws upgrade error: %v", err)
+		return
+	}
+
+	h.Subscribe("daemon", conn)
+	defer func() {
+		h.Unsubscribe("daemon", conn)
+		conn.Close()
+	}()
+
+	// Read loop to keep the connection alive. Read incoming messages from
+	// the daemon (e.g. node status updates, stream events) and re-broadcast
+	// them to the appropriate run channel.
+	for {
+		_, data, err := conn.ReadMessage()
+		if err != nil {
+			break
+		}
+
+		var msg map[string]any
+		if json.Unmarshal(data, &msg) != nil {
+			continue
+		}
+
+		// If the daemon sends a message with a runId, re-broadcast it
+		// to that run's subscribers (the web UI).
+		if runID, ok := msg["runId"].(string); ok && runID != "" {
+			h.Broadcast(runID, msg)
+		}
+	}
+}

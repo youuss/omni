@@ -54,6 +54,17 @@ func New(db *sql.DB, jwtSecret string) *chi.Mux {
 	wsHub := handler.NewWSHub()
 	runHandler := handler.NewRunHandler(runRepo, wsHub)
 
+	// Internal routes (no auth — used by the local daemon)
+	internalHandler := handler.NewInternalHandler(harnessRepo, agentRepo, runRepo)
+	r.Route("/api/internal", func(r chi.Router) {
+		r.Get("/harnesses/{id}", internalHandler.GetHarness)
+		r.Get("/projects/{projectId}/agents", internalHandler.GetProjectAgents)
+		r.Post("/runs/{runId}/status", internalHandler.UpdateRunStatus)
+	})
+
+	// Daemon WebSocket (no auth — local daemon persistent connection)
+	r.Get("/api/ws/daemon", wsHub.HandleDaemonWS)
+
 	// Protected routes
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.Auth(jwtSecret))

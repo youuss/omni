@@ -48,6 +48,13 @@ func (h *RunHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Notify connected daemons to execute this run
+	h.wsHub.Broadcast("daemon", map[string]string{
+		"type":      "execute_run",
+		"runId":     run.ID,
+		"harnessId": harnessID,
+	})
+
 	writeJSON(w, http.StatusCreated, run)
 }
 
