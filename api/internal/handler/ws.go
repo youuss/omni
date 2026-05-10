@@ -55,9 +55,13 @@ func (h *WSHub) Unsubscribe(runID string, conn *websocket.Conn) {
 func (h *WSHub) Broadcast(runID string, msg any) {
 	h.mu.RLock()
 	conns := h.conns[runID]
+	list := make([]*websocket.Conn, 0, len(conns))
+	for c := range conns {
+		list = append(list, c)
+	}
 	h.mu.RUnlock()
 
-	if len(conns) == 0 {
+	if len(list) == 0 {
 		return
 	}
 
@@ -67,12 +71,16 @@ func (h *WSHub) Broadcast(runID string, msg any) {
 		return
 	}
 
-	for conn := range conns {
+	var failed []*websocket.Conn
+	for _, conn := range list {
 		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 			log.Printf("ws broadcast write error: %v", err)
 			conn.Close()
-			h.Unsubscribe(runID, conn)
+			failed = append(failed, conn)
 		}
+	}
+	for _, conn := range failed {
+		h.Unsubscribe(runID, conn)
 	}
 }
 

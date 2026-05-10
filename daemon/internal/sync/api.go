@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -133,9 +134,12 @@ func (c *APIClient) FetchProjectAgents(projectID string) ([]executor.AgentDefini
 // UpdateRunStatus sends a run status update to the API.
 func (c *APIClient) UpdateRunStatus(runID, status string) error {
 	url := fmt.Sprintf("%s/api/internal/runs/%s/status", c.baseURL, runID)
-	payload := fmt.Sprintf(`{"status":"%s"}`, status)
+	payload, err := json.Marshal(map[string]string{"status": status})
+	if err != nil {
+		return fmt.Errorf("marshal status: %w", err)
+	}
 
-	req, err := http.NewRequest("POST", url, strings.NewReader(payload))
+	req, err := http.NewRequest("POST", url, bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}

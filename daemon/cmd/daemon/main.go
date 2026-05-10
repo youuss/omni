@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"os/signal"
@@ -21,9 +22,15 @@ func main() {
 
 	log.Printf("Daemon starting, API: %s (HTTP: %s)", cfg.APIURL, cfg.APIBaseURL)
 
+	var wg stdsync.WaitGroup
+
 	// Listen for execute_run messages from the API
 	if err := wsClient.ListenForRuns(func(runID, harnessID string) {
-		go executeRun(cfg, apiClient, runID, harnessID)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			executeRun(cfg, apiClient, runID, harnessID)
+		}()
 	}); err != nil {
 		log.Fatalf("Failed to connect to daemon channel: %v", err)
 	}
@@ -35,6 +42,7 @@ func main() {
 	<-quit
 
 	wsClient.Close()
+	wg.Wait()
 	log.Println("Daemon shut down")
 }
 
@@ -42,6 +50,9 @@ func main() {
 // machine, and streams execution events back via a per-run WebSocket.
 func executeRun(cfg config.Config, apiClient *dsync.APIClient, runID, harnessID string) {
 	log.Printf("Starting run %s (harness %s)", runID, harnessID)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	// Update run status to "running"
 	if err := apiClient.UpdateRunStatus(runID, "running"); err != nil {
@@ -142,13 +153,18 @@ func executeRun(cfg config.Config, apiClient *dsync.APIClient, runID, harnessID 
 				"message": message,
 			})
 
-			// Block until we receive a gate response
+			// Block until we receive a gate response or the run is cancelled
 			ch := make(chan bool, 1)
 			gateMu.Lock()
 			gateWaiters[nodeID] = ch
 			gateMu.Unlock()
 
-			approved := <-ch
+			var approved bool
+			select {
+			case approved = <-ch:
+			case <-ctx.Done():
+				approved = false
+			}
 
 			gateMu.Lock()
 			delete(gateWaiters, nodeID)
@@ -158,6 +174,8 @@ func executeRun(cfg config.Config, apiClient *dsync.APIClient, runID, harnessID 
 		},
 
 		OnDone: func(success bool) {
+			cancel() // Unblock any gate waiters
+
 			status := "completed"
 			if !success {
 				status = "failed"
