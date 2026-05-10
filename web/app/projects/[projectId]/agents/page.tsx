@@ -3,6 +3,13 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
+import { Bot } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { LoadingSpinner } from "@/components/ui/loading";
 
 interface Agent {
   id: string;
@@ -79,7 +86,10 @@ export default function AgentsPage() {
   if (loading) {
     return (
       <div className="p-8">
-        <p className="text-muted-foreground">Loading...</p>
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold">Agents</h1>
+        </div>
+        <LoadingSpinner />
       </div>
     );
   }
@@ -88,60 +98,49 @@ export default function AgentsPage() {
     <div className="p-8">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Agents</h1>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="bg-primary text-primary-foreground px-4 py-2 rounded-lg text-xs font-medium"
-        >
+        <Button size="sm" onClick={() => setShowForm(!showForm)}>
           {showForm ? "Cancel" : "New Agent"}
-        </button>
+        </Button>
       </div>
 
       {error && <p className="text-destructive text-xs mb-4">{error}</p>}
 
       {showForm && (
-        <div className="glass-card rounded-xl p-4 mb-6">
+        <Card className="mb-6">
           <form onSubmit={handleCreate} className="space-y-3">
             <div>
-              <label className="text-xs text-muted-foreground">Name</label>
-              <input
+              <Label>Name</Label>
+              <Input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-white/50 text-sm"
+                className="mt-1"
                 required
               />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground">
-                Description
-              </label>
-              <input
+              <Label>Description</Label>
+              <Input
                 type="text"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-white/50 text-sm"
+                className="mt-1"
               />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground">
-                System Prompt
-              </label>
+              <Label>System Prompt</Label>
               <textarea
                 value={systemPrompt}
                 onChange={(e) => setSystemPrompt(e.target.value)}
-                className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-white/50 text-sm resize-none"
+                className="flex w-full mt-1 rounded-lg border border-border bg-white/50 px-3 py-2 text-sm resize-none placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 rows={4}
               />
             </div>
-            <button
-              type="submit"
-              disabled={creating}
-              className="bg-primary text-primary-foreground px-4 py-2 rounded-lg text-xs font-medium disabled:opacity-50"
-            >
+            <Button type="submit" size="sm" disabled={creating}>
               {creating ? "Creating..." : "Create Agent"}
-            </button>
+            </Button>
           </form>
-        </div>
+        </Card>
       )}
 
       <div className="space-y-2">
@@ -160,12 +159,9 @@ export default function AgentsPage() {
               {agent.tags && agent.tags.length > 0 && (
                 <div className="flex gap-1 mt-2">
                   {agent.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="text-[10px] px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground"
-                    >
+                    <Badge key={tag} variant="secondary">
                       {tag}
-                    </span>
+                    </Badge>
                   ))}
                 </div>
               )}
@@ -179,14 +175,17 @@ export default function AgentsPage() {
           </div>
         ))}
         {agents.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground mb-4">No agents yet</p>
-            <button
-              onClick={() => setShowForm(true)}
-              className="text-xs underline text-muted-foreground"
-            >
-              Create your first agent
-            </button>
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <Bot className="h-10 w-10 text-muted-foreground/40" />
+            <h3 className="text-sm font-medium text-foreground">
+              No agents yet
+            </h3>
+            <p className="text-xs text-muted-foreground max-w-sm text-center">
+              Create agents to define the AI participants in your harness.
+            </p>
+            <Button size="sm" className="mt-2" onClick={() => setShowForm(true)}>
+              Create Agent
+            </Button>
           </div>
         )}
       </div>

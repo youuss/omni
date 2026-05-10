@@ -5,6 +5,11 @@ import { useParams, useRouter } from "next/navigation";
 import { useHarnessStore } from "@/stores/harness";
 import { useRunStore, type Run } from "@/stores/run";
 import { statusBadge } from "@/lib/status";
+import { Play, GitBranch } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { LoadingSpinner } from "@/components/ui/loading";
+import Link from "next/link";
 
 export default function RunsPage() {
   const { projectId } = useParams();
@@ -38,7 +43,10 @@ export default function RunsPage() {
   if (loading) {
     return (
       <div className="p-8">
-        <p className="text-muted-foreground">Loading...</p>
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold">Runs</h1>
+        </div>
+        <LoadingSpinner />
       </div>
     );
   }
@@ -84,18 +92,28 @@ export default function RunsPage() {
                     {new Date(run.created_at).toLocaleString()}
                   </p>
                 </div>
-                <span
-                  className={`text-[10px] px-2 py-0.5 rounded-full ${statusBadge[run.status]?.className || "bg-muted-foreground/20 text-muted-foreground"}`}
+                <Badge
+                  variant={
+                    run.status === "completed"
+                      ? "success"
+                      : run.status === "failed"
+                        ? "destructive"
+                        : "secondary"
+                  }
                 >
                   {statusBadge[run.status]?.label || run.status}
-                </span>
+                </Badge>
               </div>
             </button>
           ))}
           {runs.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground text-xs">
-                No runs yet for this harness
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <Play className="h-10 w-10 text-muted-foreground/40" />
+              <h3 className="text-sm font-medium text-foreground">
+                No runs yet
+              </h3>
+              <p className="text-xs text-muted-foreground max-w-sm text-center">
+                Execute a harness to see run history and results here.
               </p>
             </div>
           )}
@@ -103,10 +121,19 @@ export default function RunsPage() {
       )}
 
       {harnesses.length === 0 && (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground text-xs">
-            No harnesses found. Create a harness first.
+        <div className="flex flex-col items-center justify-center py-16 gap-3">
+          <GitBranch className="h-10 w-10 text-muted-foreground/40" />
+          <h3 className="text-sm font-medium text-foreground">
+            No harnesses found
+          </h3>
+          <p className="text-xs text-muted-foreground max-w-sm text-center">
+            Create a harness first to start running agent workflows.
           </p>
+          <Link href={`/projects/${projectId}/harnesses`}>
+            <Button size="sm" className="mt-2">
+              Go to Harnesses
+            </Button>
+          </Link>
         </div>
       )}
     </div>
